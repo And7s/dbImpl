@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
 	cout << "K is "<<k <<endl;
 	RandomLong rand;
 
-	int fd, ret, fdTmp;
+	int fd, ret, fdTmp, fdOut;
 	if ((fd = open("bla.txt", O_CREAT|O_TRUNC|O_WRONLY, S_IRUSR|S_IWUSR)) < 0) {
 		std::cerr << "cannot open file '" << argv[1] << "': " << strerror(errno) << std::endl;
 		return -1;
@@ -69,7 +69,8 @@ int main(int argc, char* argv[]) {
 
 
 	// output file
-	if ((fdTmp = open("out.txt",  O_CREAT|O_TRUNC|O_WRONLY, S_IRUSR|S_IWUSR)) < 0) {
+
+	if ((fdTmp = open("out.txt",  O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR)) < 0) {
 		std::cerr << "cannot open file " << endl;
 		return -1;
 	}
@@ -109,11 +110,100 @@ int main(int argc, char* argv[]) {
 
 	// write it back	
 
-	close(fdTmp);
-	//n in nElMem
+	//close(fdTmp);
 
+	
+
+	//n in nElMem
+	cout << "calc "<<nElMem << " / "<< (k+1)<<endl;
 	int64_t item_per_chunk = nElMem / (k + 1);
-	cout << "per chunk" << item_per_chunk;
+	cout << "per chunk" << item_per_chunk << endl;
+
+	for (int i = 0; i < k; i++) {	// read the chunks into memory
+		//lseek(fdTmp, 2, 1);	// put file descriptor at right position
+		if (lseek(fdTmp, i * sizeof(uint64_t) * nElMem	, SEEK_SET) < 0) {
+			cerr << "error lseek  " << strerror(errno) << std::endl;
+		}
+		read(fdTmp, &val[i], sizeof(uint64_t) * item_per_chunk);	// read a block
+
+		cout << "did read "<<i<<": "<<val[i]<<endl;
+	}
+
+
+	if ((fdOut = open("sorted.txt",  O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR)) < 0) {
+		std::cerr << "cannot open file " << endl;
+		return -1;
+	}
+
+
+	int64_t* offsets = (int64_t*) calloc(k + 1, sizeof(int64_t));	// get an offset pointer for efery chunk
+	uint64_t* file_offsets = (uint64_t*) calloc(k, sizeof(uint64_t));	// offsets in the file
+	// now compare and find the min val
+	
+
+
+// merge
+	for (int l = 0; l < 10; l++) {
+		uint64_t min_val = UINT64_MAX;
+		uint64_t idx_min = -1;
+		for (int i = 0; i < k; i++) {
+			//cout << "compare to "<<val[i*item_per_chunk];
+			
+			if (offsets[i]!= -1 && val[i * item_per_chunk] < min_val) {	// still a valid chunk?
+				min_val = val[i * item_per_chunk];
+				idx_min = i;
+			}
+		}
+		cout << "min is "<<min_val << "at idx" << idx_min<<endl;
+
+
+		// take this value to the buffer
+		val[k * item_per_chunk + offsets[k]] = min_val;
+		// constrains, check if buffer is filled
+		offsets[k]++;
+		if (offsets[k] >= item_per_chunk) {
+			cout << "buffer reached its limit, write to file " << endl;
+			write(fdOut, &val[k * item_per_chunk], sizeof(uint64_t) * item_per_chunk);	// write output buffer
+			offsets[k] = 0;
+		}
+		// constrin source buffer
+		offsets[idx_min]++;
+		if (offsets[idx_min] >= item_per_chunk || offsets[idx_min] + idx_min * nElMem >= n) {	// array out of bounds, so either the next chunk, ot after the last
+			cout << "input buffer empy, refill" << endl;
+
+			file_offsets[idx_min] += item_per_chunk;
+			cout << "file offset "<< file_offsets[idx_min]<<endl;
+			// todo check if this reaches another limit
+
+			if (file_offsets[idx_min] >= nElMem || offsets[idx_min] + idx_min * nElMem >= n) {	// this chunk is finished, cannot read any further
+				cout << "this chunk is finished, set offset to -1"<<endl;
+				offsets[idx_min] = -1;	// signal this chunk to be finished with this flag
+			} else {	// read onother chunk
+				if (lseek(fdTmp, idx_min * sizeof(uint64_t) * (nElMem) + file_offsets[idx_min] * sizeof(uint64_t), SEEK_SET) < 0) {
+					cerr << "error lseek  " << strerror(errno) << std::endl;
+				}
+				// 
+				uint64_t read_items = item_per_chunk;//min(item_per_chunk, n - nElMem * idx_min - file_offsets[idx_min]);
+				cout << "will read "<<read_items<<endl;
+				read(fdTmp, &val[idx_min * item_per_chunk], sizeof(uint64_t) * read_items);	// read a block
+			}
+			
+		}
+
+
+
+
+
+
+		// output 
+		for (int i = 0; i < nElMem; i++) {
+			cout << val[i]<< " , ";
+		}
+		cout << endl;
+
+		
+	}
+
 
 	// val is still my buffer read every chunk
 	/*
@@ -121,7 +211,7 @@ int main(int argc, char* argv[]) {
 	if (write(fd, val, sizeof(uint64_t) * n) < 0) {
 		std::cout << "error writing to ";
 	}*/
-
+		//fclose(fdTmp);
 
 
 
