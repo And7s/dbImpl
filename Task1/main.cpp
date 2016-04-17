@@ -35,16 +35,27 @@ class RandomLong
 
 int main(int argc, char* argv[]) {
   	
-  	uint64_t memSize = 88;  // how much main memory i can use
+  	uint64_t memSize = 1024 * 128;  // how much main memory i can use
   	int64_t nElMem = memSize / sizeof(uint64_t);	// how many items i can store in memory
-  	int n = 100;
+  	int n = 1000 * 1000 * 1;
   	cout << "will compute blocks of " << nElMem << endl;
 	int64_t k = ceil((double) n / nElMem);
 	cout << "K is "<<k <<endl;
 	RandomLong rand;
 
+	//n in nElMem
+	cout << "calc "<<nElMem << " / "<< (k+1)<<endl;
+	int64_t item_per_chunk = nElMem / (k + 1);
+	cout << "per chunk" << item_per_chunk << endl;
+	if (item_per_chunk < 1) {
+		cerr << "not enough memory to store at lease one item per chunk." << endl;
+		return -1;
+	}
+
+
+
 	int fd, ret, fdTmp, fdOut;
-	if ((fd = open("bla.txt", O_CREAT|O_TRUNC|O_WRONLY, S_IRUSR|S_IWUSR)) < 0) {
+	if ((fd = open("dat_gen", O_CREAT|O_TRUNC|O_WRONLY, S_IRUSR|S_IWUSR)) < 0) {
 		std::cerr << "cannot open file '" << argv[1] << "': " << strerror(errno) << std::endl;
 		return -1;
 	}
@@ -53,17 +64,17 @@ int main(int argc, char* argv[]) {
 		std::cerr << "warning: could not allocate file space: " << strerror(ret) << std::endl;
 	for (unsigned i=0; i<n; ++i) {
 		uint64_t x = rand.next();
-		cout << x << " | ";
+		//cout << x << " | ";
 		if (write(fd, &x, sizeof(uint64_t)) < 0) {
 			std::cout << "error writing to " << argv[1] << ": " << strerror(errno) << std::endl;
 		}
 	}
-	cout << endl;
+	cout << "did create random data " << endl;
 	close(fd);
 
 
 	// open the file again
-	if ((fd = open("bla.txt", O_RDWR)) < 0) {
+	if ((fd = open("dat_gen", O_RDWR)) < 0) {
 		std::cerr << "cannot open file '" << argv[1] << "': " << strerror(errno) << std::endl;
 		return -1;
 	}
@@ -71,7 +82,7 @@ int main(int argc, char* argv[]) {
 
 	// output file
 
-	if ((fdTmp = open("out.txt",  O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR)) < 0) {
+	if ((fdTmp = open("tmp",  O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR)) < 0) {
 		std::cerr << "cannot open file " << endl;
 		return -1;
 	}
@@ -80,13 +91,13 @@ int main(int argc, char* argv[]) {
 	uint64_t* val = (uint64_t*) malloc(sizeof(uint64_t) * nElMem);	// create the buffer
 	while (remainEl > 0) {
 		int64_t curReadEl = min(remainEl, nElMem);
-		cout << "read chunk: ";
+		//cout << "read chunk: ";
 		read(fd, val, sizeof(uint64_t) * curReadEl);	// read a block
 
-		for (int i = 0; i < curReadEl; i++) {
+		/*for (int i = 0; i < curReadEl; i++) {
 			cout << val[i] << ", ";
 		}
-		cout << endl;
+		cout << endl;*/
 
 		uint64_t tmp;
 		// stupid O(n2) sort
@@ -99,34 +110,22 @@ int main(int argc, char* argv[]) {
 				}
 			}
 		}
-		cout << "sorted chunk: ";
+		/*cout << "sorted chunk: ";
 		for (int i = 0; i < curReadEl; i++) {
-			//val[i] = i;
 			cout << val[i] << ", ";
 		}
-		cout << endl;
+		cout << endl;*/
 
 		if (write(fdTmp, val, sizeof(uint64_t) * curReadEl) < 0) {
 			std::cout << "error writing to ";
 		}
 		remainEl -= nElMem;
+		cout << "rem "<<remainEl<<endl;
 	}
 	
 
-	// write it back	
-
-	//close(fdTmp);
-
+	cout << "did sort each chunk individually"<<endl;
 	
-
-	//n in nElMem
-	cout << "calc "<<nElMem << " / "<< (k+1)<<endl;
-	int64_t item_per_chunk = nElMem / (k + 1);
-	cout << "per chunk" << item_per_chunk << endl;
-	if (item_per_chunk < 1) {
-		cerr << "not enough memory to store at lease one item per chunk." << endl;
-		return -1;
-	}
 
 	for (int i = 0; i < k; i++) {	// read the chunks into memory
 		//lseek(fdTmp, 2, 1);	// put file descriptor at right position
@@ -134,21 +133,18 @@ int main(int argc, char* argv[]) {
 			cerr << "error lseek  " << strerror(errno) << std::endl;
 		}
 		read(fdTmp, &val[i * item_per_chunk], sizeof(uint64_t) * item_per_chunk);	// read a block
-		cout << "this chunk: ";
-		for (int j = 0; j < item_per_chunk; j++) {
+		/*for (int j = 0; j < item_per_chunk; j++) {
 			cout << val[i * item_per_chunk + j]<<",";
-		}
-		cout << endl;
-		//cout << "did read "<<i<<": "<<val[i]<<endl;
+		}*/
 	}
-	cout << "did read ";
+	/*cout << "did read ";
 	for (int i = 0; i < item_per_chunk * (k+1); i++) {
 		cout << val[i] << ", ";
 	}
-	cout << endl;
+	cout << endl;*/
 
 
-	if ((fdOut = open("sorted.txt",  O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR)) < 0) {
+	if ((fdOut = open("sorted",  O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR)) < 0) {
 		std::cerr << "cannot open file " << endl;
 		return -1;
 	}
@@ -164,9 +160,7 @@ int main(int argc, char* argv[]) {
 	for (int l = 0; l < n; l++) {
 		uint64_t min_val = UINT64_MAX;
 		uint64_t idx_min = -1;
-		for (int i = 0; i < k; i++) {
-			//cout << "compare to "<<val[i*item_per_chunk];
-			
+		for (int i = 0; i < k; i++) {		
 			if (offsets[i]!= -1 && val[i * item_per_chunk + offsets[i]] < min_val) {	// still a valid chunk?
 				min_val = val[i * item_per_chunk + offsets[i]];
 				idx_min = i;
@@ -174,9 +168,9 @@ int main(int argc, char* argv[]) {
 		}
 
 		
-		cout << "offsets "<<offsets[0]<<", "<<offsets[1]<<", "<<offsets[2]<<endl;
+		/*cout << "offsets "<<offsets[0]<<", "<<offsets[1]<<", "<<offsets[2]<<endl;
 		cout << "fileO"<<file_offsets[0]<<", "<<file_offsets[1]<<", "<<file_offsets[2]<<endl;
-		cout << "@"<<l<<"min is "<<min_val << "at idx" << idx_min<<endl;
+		cout << "@"<<l<<"min is "<<min_val << "at idx" << idx_min<<endl;*/
 
 
 		// take this value to the buffer
@@ -184,7 +178,7 @@ int main(int argc, char* argv[]) {
 		// constrains, check if buffer is filled
 		offsets[k]++;
 		if (offsets[k] >= item_per_chunk) {
-			cout << "buffer reached its limit, write to file " << endl;
+			//cout << "buffer reached its limit, write to file " << endl;
 			write(fdOut, &val[k * item_per_chunk], sizeof(uint64_t) * item_per_chunk);	// write output buffer
 			offsets[k] = 0;
 		}
@@ -193,21 +187,21 @@ int main(int argc, char* argv[]) {
 		
 
 		if (offsets[idx_min] + file_offsets[idx_min] >= nElMem) {
-			cout << "this chunk finished"<<endl;
+			//cout << "this chunk finished"<<endl;
 			offsets[idx_min] = -1;
 
 		} else if (offsets[idx_min] >= item_per_chunk || offsets[idx_min] + file_offsets[idx_min] + idx_min * nElMem >= n) {	// array out of bounds, so either the next chunk, ot after the last
-			cout << "input buffer empy, refill" << endl;
+			//cout << "input buffer empy, refill" << endl;
 
 			file_offsets[idx_min] += item_per_chunk;
-			cout << "file offset"<<idx_min<<" "<< file_offsets[idx_min]<<endl;
+			//cout << "file offset"<<idx_min<<" "<< file_offsets[idx_min]<<endl;
 			// todo check if this reaches another limit
-			cout << "compare "<<(offsets[idx_min] + file_offsets[idx_min] + idx_min * nElMem) << "vs "<<n <<endl;
+			//cout << "compare "<<(offsets[idx_min] + file_offsets[idx_min] + idx_min * nElMem) << "vs "<<n <<endl;
 			if (file_offsets[idx_min] >= nElMem || // at the end of the current chunk
 				offsets[idx_min] + file_offsets[idx_min] + idx_min * nElMem - item_per_chunk >= n) {	
-				cout << "this chunk is finished, set offset to -1"<<endl;
+				//cout << "this chunk is finished, set offset to -1"<<endl;
 				offsets[idx_min] = -1;	// signal this chunk to be finished with this flag
-				cout << "offsets in if "<<offsets[0]<<", "<<offsets[1]<<endl;
+				//cout << "offsets in if "<<offsets[0]<<", "<<offsets[1]<<endl;
 			} else {	// read onother chunk
 				if (lseek(fdTmp, idx_min * sizeof(uint64_t) * (nElMem) + file_offsets[idx_min] * sizeof(uint64_t), SEEK_SET) < 0) {
 					cerr << "error lseek  " << strerror(errno) << std::endl;
@@ -220,31 +214,30 @@ int main(int argc, char* argv[]) {
 		}
 
 		// output 
-		for (int i = 0; i < nElMem; i++) {
+		/*for (int i = 0; i < nElMem; i++) {
 			cout << val[i]<< " , ";
 		}
-		cout << endl;
+		cout << endl;*/
 
 		
 	}
 	// flush the remaining output buffer
-	cout << "remaining offset is "<<offsets[3]<<endl;
 	if (offsets[k] > 0) {
 		write(fdOut, &val[k * item_per_chunk], sizeof(uint64_t) * offsets[k]);	// write output buffer
 	}
 
 	// test read
-	if ((fd = open("sorted.txt", O_RDWR)) < 0) {
+	if ((fd = open("sorted", O_RDWR)) < 0) {
 		std::cerr << "cannot open file '" << endl;
 		return -1;
 	}
 
 	uint64_t* val2 = (uint64_t*)malloc(sizeof(uint64_t) * n);
 	read(fd, val2, sizeof(uint64_t) * n);
-	for (int i = 0; i < n; i++) {
+	/*for (int i = 0; i < n; i++) {
 		cout  << val2[i] << " | ";
 	}
-	cout << endl;
+	cout << endl;*/
 
 	cout << "\n";
 	return 0;
