@@ -35,9 +35,9 @@ class RandomLong
 
 int main(int argc, char* argv[]) {
   	
-  	uint64_t memSize = 1024 * 128;  // how much main memory i can use
+  	uint64_t memSize = 1024 * 1024 * 100;  // how much main memory i can use
   	int64_t nElMem = memSize / sizeof(uint64_t);	// how many items i can store in memory
-  	int n = 1000 * 1000 * 1;
+  	int n = 1000 * 1000 * 625;
   	cout << "will compute blocks of " << nElMem << endl;
 	int64_t k = ceil((double) n / nElMem);
 	cout << "K is "<<k <<endl;
@@ -51,7 +51,7 @@ int main(int argc, char* argv[]) {
 		cerr << "not enough memory to store at lease one item per chunk." << endl;
 		return -1;
 	}
-
+	uint64_t* val = (uint64_t*) malloc(sizeof(uint64_t) * nElMem);	// create the buffer
 
 
 	int fd, ret, fdTmp, fdOut;
@@ -62,10 +62,14 @@ int main(int argc, char* argv[]) {
 	
 	if ((ret = posix_fallocate(fd, 0, n*sizeof(uint64_t))) != 0)
 		std::cerr << "warning: could not allocate file space: " << strerror(ret) << std::endl;
-	for (unsigned i=0; i<n; ++i) {
-		uint64_t x = rand.next();
+	
+	for (unsigned i=0; i<n; i += nElMem) {
+		for (int j = 0; j < nElMem; j++) {
+			val[j] = rand.next();
+		}
+		//uint64_t x = rand.next();
 		//cout << x << " | ";
-		if (write(fd, &x, sizeof(uint64_t)) < 0) {
+		if (write(fd, val, sizeof(uint64_t) * nElMem) < 0) {
 			std::cout << "error writing to " << argv[1] << ": " << strerror(errno) << std::endl;
 		}
 	}
@@ -88,7 +92,7 @@ int main(int argc, char* argv[]) {
 	}
 	uint64_t elPos = 0;
 	int64_t remainEl = n;	// how many elements had not been proceeded so far
-	uint64_t* val = (uint64_t*) malloc(sizeof(uint64_t) * nElMem);	// create the buffer
+	
 	while (remainEl > 0) {
 		int64_t curReadEl = min(remainEl, nElMem);
 		//cout << "read chunk: ";
