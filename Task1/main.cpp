@@ -35,9 +35,9 @@ class RandomLong
 
 int main(int argc, char* argv[]) {
   	
-  	uint64_t memSize = 64;  // how much main memory i can use
+  	uint64_t memSize = 88;  // how much main memory i can use
   	int64_t nElMem = memSize / sizeof(uint64_t);	// how many items i can store in memory
-  	int n = 16;
+  	int n = 100;
   	cout << "will compute blocks of " << nElMem << endl;
 	int64_t k = ceil((double) n / nElMem);
 	cout << "K is "<<k <<endl;
@@ -123,6 +123,10 @@ int main(int argc, char* argv[]) {
 	cout << "calc "<<nElMem << " / "<< (k+1)<<endl;
 	int64_t item_per_chunk = nElMem / (k + 1);
 	cout << "per chunk" << item_per_chunk << endl;
+	if (item_per_chunk < 1) {
+		cerr << "not enough memory to store at lease one item per chunk." << endl;
+		return -1;
+	}
 
 	for (int i = 0; i < k; i++) {	// read the chunks into memory
 		//lseek(fdTmp, 2, 1);	// put file descriptor at right position
@@ -132,7 +136,7 @@ int main(int argc, char* argv[]) {
 		read(fdTmp, &val[i * item_per_chunk], sizeof(uint64_t) * item_per_chunk);	// read a block
 		cout << "this chunk: ";
 		for (int j = 0; j < item_per_chunk; j++) {
-			cout << val[j +i]<<",";
+			cout << val[i * item_per_chunk + j]<<",";
 		}
 		cout << endl;
 		//cout << "did read "<<i<<": "<<val[i]<<endl;
@@ -168,7 +172,10 @@ int main(int argc, char* argv[]) {
 				idx_min = i;
 			}
 		}
+
+		
 		cout << "offsets "<<offsets[0]<<", "<<offsets[1]<<", "<<offsets[2]<<endl;
+		cout << "fileO"<<file_offsets[0]<<", "<<file_offsets[1]<<", "<<file_offsets[2]<<endl;
 		cout << "@"<<l<<"min is "<<min_val << "at idx" << idx_min<<endl;
 
 
@@ -183,14 +190,21 @@ int main(int argc, char* argv[]) {
 		}
 		// constrin source buffer
 		offsets[idx_min]++;
-		if (offsets[idx_min] >= item_per_chunk || offsets[idx_min] + idx_min * nElMem >= n) {	// array out of bounds, so either the next chunk, ot after the last
+		
+
+		if (offsets[idx_min] + file_offsets[idx_min] >= nElMem) {
+			cout << "this chunk finished"<<endl;
+			offsets[idx_min] = -1;
+
+		} else if (offsets[idx_min] >= item_per_chunk || offsets[idx_min] + file_offsets[idx_min] + idx_min * nElMem >= n) {	// array out of bounds, so either the next chunk, ot after the last
 			cout << "input buffer empy, refill" << endl;
 
 			file_offsets[idx_min] += item_per_chunk;
 			cout << "file offset"<<idx_min<<" "<< file_offsets[idx_min]<<endl;
 			// todo check if this reaches another limit
-
-			if (file_offsets[idx_min] >= nElMem || offsets[idx_min] + idx_min * nElMem >= n) {	// this chunk is finished, cannot read any further
+			cout << "compare "<<(offsets[idx_min] + file_offsets[idx_min] + idx_min * nElMem) << "vs "<<n <<endl;
+			if (file_offsets[idx_min] >= nElMem || // at the end of the current chunk
+				offsets[idx_min] + file_offsets[idx_min] + idx_min * nElMem - item_per_chunk >= n) {	
 				cout << "this chunk is finished, set offset to -1"<<endl;
 				offsets[idx_min] = -1;	// signal this chunk to be finished with this flag
 				cout << "offsets in if "<<offsets[0]<<", "<<offsets[1]<<endl;
@@ -198,17 +212,12 @@ int main(int argc, char* argv[]) {
 				if (lseek(fdTmp, idx_min * sizeof(uint64_t) * (nElMem) + file_offsets[idx_min] * sizeof(uint64_t), SEEK_SET) < 0) {
 					cerr << "error lseek  " << strerror(errno) << std::endl;
 				}
-				// todo: implement reading out of files 
+				// todo: implement reading out of files, this actually reads more than allowed
 				offsets[idx_min] = 0;
 				read(fdTmp, &val[idx_min * item_per_chunk], sizeof(uint64_t) * item_per_chunk);	// read a block
 			}
 			
 		}
-
-
-
-
-
 
 		// output 
 		for (int i = 0; i < nElMem; i++) {
@@ -218,7 +227,11 @@ int main(int argc, char* argv[]) {
 
 		
 	}
-
+	// flush the remaining output buffer
+	cout << "remaining offset is "<<offsets[3]<<endl;
+	if (offsets[k] > 0) {
+		write(fdOut, &val[k * item_per_chunk], sizeof(uint64_t) * offsets[k]);	// write output buffer
+	}
 
 	// test read
 	if ((fd = open("sorted.txt", O_RDWR)) < 0) {
