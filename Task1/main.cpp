@@ -99,17 +99,8 @@ int main(int argc, char* argv[]) {
 		}
 		cout << endl;*/
 
-		uint64_t tmp;
-		// stupid O(n2) sort
-		for (int i = 0; i < curReadEl; i++) {
-			for (int j = i + 1; j < curReadEl; j++) {
-				if (val[i] > val[j]) {	// swap
-					tmp = val[j];
-					val[j] = val[i];
-					val[i] = tmp;
-				}
-			}
-		}
+
+		sort(val, val +curReadEl);
 		/*cout << "sorted chunk: ";
 		for (int i = 0; i < curReadEl; i++) {
 			cout << val[i] << ", ";
