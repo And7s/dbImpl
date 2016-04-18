@@ -10,29 +10,14 @@
 
 using namespace std;
 
-class RandomLong
-{
-   /// The state
-   uint64_t state;
+int externalSort(int fdInput, uint64_t size, int fdOutput, uint64_t memSize) {
 
-   public:
-   /// Constructor
-   explicit RandomLong(uint64_t seed=88172645463325252ull) : state(seed) {}
-
-   /// Get the next value
-   uint64_t next() { state^=(state<<13); state^=(state>>7); return (state^=(state<<17)); }
-};
-
-
-int main(int argc, char* argv[]) {
-  	
-  	uint64_t memSize = 1024 * 1024 * 1;  // how much main memory i can use
+	
   	int64_t nElMem = memSize / sizeof(uint64_t);	// how many items i can store in memory
-  	int64_t n =  1000 * 1000 * 100;
+  	int64_t n =  size;
   	cout << "will compute blocks of " << nElMem << endl;
 	int64_t k = ceil((double) n / nElMem);
 	cout << "K is "<<k <<endl;
-	RandomLong rand;
 
 	//n in nElMem
 	cout << "calc "<<nElMem << " / "<< (k+1)<<endl;
@@ -44,36 +29,9 @@ int main(int argc, char* argv[]) {
 	}
 	uint64_t* val = (uint64_t*) malloc(sizeof(uint64_t) * nElMem);	// create the buffer
 
-
-	int fd, ret, fdTmp, fdOut;
-	if ((fd = open("dat_gen", O_CREAT|O_TRUNC|O_WRONLY, S_IRUSR|S_IWUSR)) < 0) {
-		std::cerr << "cannot open file '" << argv[1] << "': " << strerror(errno) << std::endl;
-		return -1;
-	}
-	
-	if ((ret = posix_fallocate(fd, 0, n*sizeof(uint64_t))) != 0)
-		std::cerr << "warning: could not allocate file space: " << strerror(ret) << std::endl;
-	
-	for (unsigned i=0; i<n; i += nElMem) {
-		for (int j = 0; j < nElMem; j++) {
-			val[j] = rand.next();
-		}
-		if (write(fd, val, sizeof(uint64_t) * nElMem) < 0) {
-			std::cout << "error writing to " << argv[1] << ": " << strerror(errno) << std::endl;
-		}
-	}
-	cout << "did create random data " << endl;
-	close(fd);
-
-	// open the file again
-	if ((fd = open("dat_gen", O_RDWR)) < 0) {
-		std::cerr << "cannot open file '" << argv[1] << "': " << strerror(errno) << std::endl;
-		return -1;
-	}
-
 	// output file
-
-	if ((fdTmp = open("tmp",  O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR)) < 0) {
+	int fdTmp;
+	if ((fdTmp = open("~.tmp",  O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR)) < 0) {
 		std::cerr << "cannot open file " << endl;
 		return -1;
 	}
@@ -82,10 +40,9 @@ int main(int argc, char* argv[]) {
 	
 	while (remainEl > 0) {
 		int64_t curReadEl = min(remainEl, nElMem);
-		read(fd, val, sizeof(uint64_t) * curReadEl);	// read a block
+		read(fdInput, val, sizeof(uint64_t) * curReadEl);	// read a block
 
 		sort(val, val +curReadEl);
-
 
 		if (write(fdTmp, val, sizeof(uint64_t) * curReadEl) < 0) {
 			std::cout << "error writing to ";
@@ -102,12 +59,6 @@ int main(int argc, char* argv[]) {
 		}
 		read(fdTmp, &val[i * item_per_chunk], sizeof(uint64_t) * item_per_chunk);	// read a block
 	}
-
-	if ((fdOut = open("sorted",  O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR)) < 0) {
-		std::cerr << "cannot open file " << endl;
-		return -1;
-	}
-
 
 	int64_t* offsets = (int64_t*) calloc(k + 1, sizeof(int64_t));	// get an offset pointer for efery chunk
 	uint64_t* file_offsets = (uint64_t*) calloc(k, sizeof(uint64_t));	// offsets in the file
@@ -130,7 +81,7 @@ int main(int argc, char* argv[]) {
 		offsets[k]++;
 		if (offsets[k] >= item_per_chunk) {
 			cout << "buffer reached its limit, write to file " << l << endl;
-			write(fdOut, &val[k * item_per_chunk], sizeof(uint64_t) * item_per_chunk);	// write output buffer
+			write(fdOutput, &val[k * item_per_chunk], sizeof(uint64_t) * item_per_chunk);	// write output buffer
 			offsets[k] = 0;
 		}
 		// constrin source buffer
@@ -164,46 +115,58 @@ int main(int argc, char* argv[]) {
 	cout << "merging finished, write ermaining " << offsets[k] << endl;
 	// flush the remaining output buffer
 	if (offsets[k] > 0) {
-		write(fdOut, &val[k * item_per_chunk], sizeof(uint64_t) * offsets[k]);	// write output buffer
+		write(fdOutput, &val[k * item_per_chunk], sizeof(uint64_t) * offsets[k]);	// write output buffer
 	}
-	cout << "test now" << endl;
 
-	// test read
-	if ((fd = open("sorted", O_RDWR)) < 0) {
-		std::cerr << "cannot open file '" << endl;
+	// cleanup
+	close(fdTmp);
+	free(val);
+	free(offsets);
+	free(file_offsets);
+}
+
+int main(int argc, char* argv[]) {
+  	if (argc != 4) {
+  		cout << "sort inputFile outputFile memoryBufferInMB" << endl;
+  		return -1;
+  	}
+	
+	uint64_t n = 1000 * 1000 * 625;	// 5GB / 8B = 625Mio elements	
+	uint64_t memSize = 1000 * 1000 * atoi(argv[3]);  // how much main memory i can use
+	uint64_t nElMem = memSize / sizeof(uint64_t);
+
+	int fdIn, fdOut;
+	// open the inputFile
+	if ((fdIn = open(argv[1], O_RDWR)) < 0) {
+		std::cerr << "cannot open file '" << argv[1] << "': " << strerror(errno) << std::endl;
 		return -1;
 	}
 
-	bool valid = true;
-
-	/*
-	uint64_t* val2 = (uint64_t*)malloc(sizeof(uint64_t) * n);
-	read(fd, val2, sizeof(uint64_t) * n);
-	for (int i = 0; i < n; i++) {
-		cout  << val2[i] << " | ";
+	// open the outputFile
+	if ((fdOut = open(argv[2],  O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR)) < 0) {
+		std::cerr << "cannot create file " << argv[2] << endl;
+		return -1;
 	}
 
-	// check if it is valid
+	externalSort(fdIn, n, fdOut, memSize);
+	close(fdIn);
+
+	uint64_t* val = (uint64_t*) malloc(sizeof(uint64_t) * nElMem);	// create the buffer
+
+	cout << "test now" << endl;
 	
-	for (uint64_t i = 1; i < n && valid; i++) {
-		if (val2[i] < val2[i - 1]) {
-			valid = false;
-			cerr << "errrfst " << val2[i] << "smaler " << val2[i - 1] << "@" << i;
-		}
-	}*/
-	
+	bool valid = true;
 	uint64_t i = 0;
 	uint64_t idx = 0;
-	lseek(fd, 0, SEEK_SET);
+	lseek(fdOut, 0, SEEK_SET);
 	while (i < n && valid) {
 		
 		if (i % nElMem == 0) {
 			cout << "read chunk valid " << i << endl;
-			uint64_t readEl = nElMem;
-			 // = min((uint64_t) (n - i), nElMem);
+			uint64_t readEl = min((uint64_t) (n - i), nElMem);
 			uint64_t last_val = val[nElMem - 1];
 			
-			read(fd, val, sizeof(uint64_t) * readEl);
+			read(fdOut, val, sizeof(uint64_t) * readEl);
 			if (i > 0 && val[0] < last_val) {	// compare last el to fst el of new chunk
 				cerr << "errr1 " << val[0] << "smaller " << last_val << " @" << i;
 				valid = false;
@@ -222,7 +185,8 @@ int main(int argc, char* argv[]) {
 	}
 	cout << "valid? "<< valid;
 	cout << endl;
-
+	close(fdOut);
+	free(val);
 	cout << "\n";
 	return 0;
 }
