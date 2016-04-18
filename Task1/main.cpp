@@ -1,19 +1,11 @@
 // compile with c11 flag
 // g++ main.cpp -std=c++11
 
-#include <iostream>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
-#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <stdint.h>
 #include <unistd.h>
-
 #include <algorithm>
-#include <functional>
-#include <array>
 #include <iostream>
 
 using namespace std;
@@ -28,16 +20,15 @@ class RandomLong
    explicit RandomLong(uint64_t seed=88172645463325252ull) : state(seed) {}
 
    /// Get the next value
-   //uint64_t next() { state^=(state<<13); state^=(state>>7); return (state^=(state<<17)); }
-   uint64_t next() { state^=(state<<13); state^=(state>>7); return state / 1E17;}
+   uint64_t next() { state^=(state<<13); state^=(state>>7); return (state^=(state<<17)); }
 };
 
 
 int main(int argc, char* argv[]) {
   	
-  	uint64_t memSize = 1024 * 1024 * 100;  // how much main memory i can use
+  	uint64_t memSize = 1024 * 1024 * 1;  // how much main memory i can use
   	int64_t nElMem = memSize / sizeof(uint64_t);	// how many items i can store in memory
-  	int n = 1000 * 1000 * 625;
+  	int64_t n =  1000 * 1000 * 100;
   	cout << "will compute blocks of " << nElMem << endl;
 	int64_t k = ceil((double) n / nElMem);
 	cout << "K is "<<k <<endl;
@@ -67,8 +58,6 @@ int main(int argc, char* argv[]) {
 		for (int j = 0; j < nElMem; j++) {
 			val[j] = rand.next();
 		}
-		//uint64_t x = rand.next();
-		//cout << x << " | ";
 		if (write(fd, val, sizeof(uint64_t) * nElMem) < 0) {
 			std::cout << "error writing to " << argv[1] << ": " << strerror(errno) << std::endl;
 		}
@@ -76,13 +65,11 @@ int main(int argc, char* argv[]) {
 	cout << "did create random data " << endl;
 	close(fd);
 
-
 	// open the file again
 	if ((fd = open("dat_gen", O_RDWR)) < 0) {
 		std::cerr << "cannot open file '" << argv[1] << "': " << strerror(errno) << std::endl;
 		return -1;
 	}
-
 
 	// output file
 
@@ -95,21 +82,10 @@ int main(int argc, char* argv[]) {
 	
 	while (remainEl > 0) {
 		int64_t curReadEl = min(remainEl, nElMem);
-		//cout << "read chunk: ";
 		read(fd, val, sizeof(uint64_t) * curReadEl);	// read a block
 
-		/*for (int i = 0; i < curReadEl; i++) {
-			cout << val[i] << ", ";
-		}
-		cout << endl;*/
-
-
 		sort(val, val +curReadEl);
-		/*cout << "sorted chunk: ";
-		for (int i = 0; i < curReadEl; i++) {
-			cout << val[i] << ", ";
-		}
-		cout << endl;*/
+
 
 		if (write(fdTmp, val, sizeof(uint64_t) * curReadEl) < 0) {
 			std::cout << "error writing to ";
@@ -118,26 +94,14 @@ int main(int argc, char* argv[]) {
 		cout << "rem "<<remainEl<<endl;
 	}
 	
-
 	cout << "did sort each chunk individually"<<endl;
 	
-
 	for (int i = 0; i < k; i++) {	// read the chunks into memory
-		//lseek(fdTmp, 2, 1);	// put file descriptor at right position
 		if (lseek(fdTmp, i * sizeof(uint64_t) * nElMem	, SEEK_SET) < 0) {
 			cerr << "error lseek  " << strerror(errno) << std::endl;
 		}
 		read(fdTmp, &val[i * item_per_chunk], sizeof(uint64_t) * item_per_chunk);	// read a block
-		/*for (int j = 0; j < item_per_chunk; j++) {
-			cout << val[i * item_per_chunk + j]<<",";
-		}*/
 	}
-	/*cout << "did read ";
-	for (int i = 0; i < item_per_chunk * (k+1); i++) {
-		cout << val[i] << ", ";
-	}
-	cout << endl;*/
-
 
 	if ((fdOut = open("sorted",  O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR)) < 0) {
 		std::cerr << "cannot open file " << endl;
@@ -149,10 +113,8 @@ int main(int argc, char* argv[]) {
 	uint64_t* file_offsets = (uint64_t*) calloc(k, sizeof(uint64_t));	// offsets in the file
 	// now compare and find the min val
 	
-
-
-// merge
-	for (int l = 0; l < n; l++) {
+	// merge
+	for (uint64_t l = 0; l < n; l++) {
 		uint64_t min_val = UINT64_MAX;
 		uint64_t idx_min = -1;
 		for (int i = 0; i < k; i++) {		
@@ -162,18 +124,12 @@ int main(int argc, char* argv[]) {
 			}
 		}
 
-		
-		/*cout << "offsets "<<offsets[0]<<", "<<offsets[1]<<", "<<offsets[2]<<endl;
-		cout << "fileO"<<file_offsets[0]<<", "<<file_offsets[1]<<", "<<file_offsets[2]<<endl;
-		cout << "@"<<l<<"min is "<<min_val << "at idx" << idx_min<<endl;*/
-
-
 		// take this value to the buffer
 		val[k * item_per_chunk + offsets[k]] = min_val;
 		// constrains, check if buffer is filled
 		offsets[k]++;
 		if (offsets[k] >= item_per_chunk) {
-			//cout << "buffer reached its limit, write to file " << endl;
+			cout << "buffer reached its limit, write to file " << l << endl;
 			write(fdOut, &val[k * item_per_chunk], sizeof(uint64_t) * item_per_chunk);	// write output buffer
 			offsets[k] = 0;
 		}
@@ -182,21 +138,18 @@ int main(int argc, char* argv[]) {
 		
 
 		if (offsets[idx_min] + file_offsets[idx_min] >= nElMem) {
-			//cout << "this chunk finished"<<endl;
 			offsets[idx_min] = -1;
 
 		} else if (offsets[idx_min] >= item_per_chunk || offsets[idx_min] + file_offsets[idx_min] + idx_min * nElMem >= n) {	// array out of bounds, so either the next chunk, ot after the last
-			//cout << "input buffer empy, refill" << endl;
-
 			file_offsets[idx_min] += item_per_chunk;
-			//cout << "file offset"<<idx_min<<" "<< file_offsets[idx_min]<<endl;
+			
 			// todo check if this reaches another limit
-			//cout << "compare "<<(offsets[idx_min] + file_offsets[idx_min] + idx_min * nElMem) << "vs "<<n <<endl;
+			
 			if (file_offsets[idx_min] >= nElMem || // at the end of the current chunk
 				offsets[idx_min] + file_offsets[idx_min] + idx_min * nElMem - item_per_chunk >= n) {	
-				//cout << "this chunk is finished, set offset to -1"<<endl;
+				// finished chunk, set flag
 				offsets[idx_min] = -1;	// signal this chunk to be finished with this flag
-				//cout << "offsets in if "<<offsets[0]<<", "<<offsets[1]<<endl;
+				
 			} else {	// read onother chunk
 				if (lseek(fdTmp, idx_min * sizeof(uint64_t) * (nElMem) + file_offsets[idx_min] * sizeof(uint64_t), SEEK_SET) < 0) {
 					cerr << "error lseek  " << strerror(errno) << std::endl;
@@ -206,20 +159,14 @@ int main(int argc, char* argv[]) {
 				read(fdTmp, &val[idx_min * item_per_chunk], sizeof(uint64_t) * item_per_chunk);	// read a block
 			}
 			
-		}
-
-		// output 
-		/*for (int i = 0; i < nElMem; i++) {
-			cout << val[i]<< " , ";
-		}
-		cout << endl;*/
-
-		
+		}		
 	}
+	cout << "merging finished, write ermaining " << offsets[k] << endl;
 	// flush the remaining output buffer
 	if (offsets[k] > 0) {
 		write(fdOut, &val[k * item_per_chunk], sizeof(uint64_t) * offsets[k]);	// write output buffer
 	}
+	cout << "test now" << endl;
 
 	// test read
 	if ((fd = open("sorted", O_RDWR)) < 0) {
@@ -227,14 +174,55 @@ int main(int argc, char* argv[]) {
 		return -1;
 	}
 
+	bool valid = true;
+
+	/*
 	uint64_t* val2 = (uint64_t*)malloc(sizeof(uint64_t) * n);
 	read(fd, val2, sizeof(uint64_t) * n);
-	/*for (int i = 0; i < n; i++) {
+	for (int i = 0; i < n; i++) {
 		cout  << val2[i] << " | ";
 	}
-	cout << endl;*/
+
+	// check if it is valid
+	
+	for (uint64_t i = 1; i < n && valid; i++) {
+		if (val2[i] < val2[i - 1]) {
+			valid = false;
+			cerr << "errrfst " << val2[i] << "smaler " << val2[i - 1] << "@" << i;
+		}
+	}*/
+	
+	uint64_t i = 0;
+	uint64_t idx = 0;
+	lseek(fd, 0, SEEK_SET);
+	while (i < n && valid) {
+		
+		if (i % nElMem == 0) {
+			cout << "read chunk valid " << i << endl;
+			uint64_t readEl = nElMem;
+			 // = min((uint64_t) (n - i), nElMem);
+			uint64_t last_val = val[nElMem - 1];
+			
+			read(fd, val, sizeof(uint64_t) * readEl);
+			if (i > 0 && val[0] < last_val) {	// compare last el to fst el of new chunk
+				cerr << "errr1 " << val[0] << "smaller " << last_val << " @" << i;
+				valid = false;
+			}
+			idx = 0;
+		} else {
+			// todo check
+			if (val[idx] < val[idx - 1]) {	
+				cerr << "errr2 " << val[idx] << "smaller " << val[idx - 1] << " @" << idx;
+				valid = false;
+			}
+		}
+		i++;
+		idx++;
+		
+	}
+	cout << "valid? "<< valid;
+	cout << endl;
 
 	cout << "\n";
 	return 0;
-
 }
