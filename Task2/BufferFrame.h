@@ -1,0 +1,4 @@
+
+class BufferFrame {
+	void* getData();
+};
