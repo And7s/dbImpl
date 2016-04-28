@@ -6,7 +6,9 @@
 #include <pthread.h>
 
 #include "BufferManager.h"
-#include "BufferFrame.h"
+
+
+//g++ buffertest.cpp main.cpp -pthread -std=c++11
 
 using namespace std;
 

@@ -37,8 +37,8 @@ inline HexCharStruct hex(unsigned char _c) {
 
 
 BufferFrame::BufferFrame(uint64_t id) {
-	cout << "create new bufferframe with i "<< id << endl;
-	cout << "in constr "<<inUse<<"\n";
+	//cout << "create new bufferframe with i "<< id << endl;
+	//cout << "in constr "<<inUse<<"\n";
 	data = malloc(tableSize);
 	pageId = id;
 }
@@ -69,10 +69,11 @@ BufferFrame::~BufferFrame() {
 
 BufferFrame& BufferManager::fixPage(uint64_t pageId, bool exclusive) {
 	// this page can 1. be in memory, 2. be on disk
-	cout << "is: "<< (hashTable[pageId] == NULL) << endl;
-	cout << "loaded "<< loadedPages << "pags";
+	
+	cout << "fix "<<pageId<< "(exl. "<< exclusive << ") loaded "<< loadedPages << "pags" << endl;
 
 	if (hashTable[pageId] == NULL) {	// data is not in memory
+		cout <<"hello "<<endl;
 		if (loadedPages == pageCount) {
 			cout << "out of memory"<< endl;
 			freePage();
@@ -80,7 +81,7 @@ BufferFrame& BufferManager::fixPage(uint64_t pageId, bool exclusive) {
 		loadedPages++;
 		BufferFrame* bf = new BufferFrame(pageId);
 		readFile(pageId, bf->data);
-		bf->show();
+		
 		hashTable[pageId] = bf;
 	} else {
 		cout << "have already " << pageId <<endl;
@@ -91,7 +92,7 @@ BufferFrame& BufferManager::fixPage(uint64_t pageId, bool exclusive) {
 	}
 
 	if (exclusive) {
-		cout << "try exclusive";
+		//cout << "try exclusive";
 		if (hashTable[pageId]->exclusive || hashTable[pageId]->inUse > 0) {
 			cerr << "cannot grant exclusive use " << endl;
 			throw -1;	// only one exclusive allowed, TODO: wait
@@ -103,7 +104,7 @@ BufferFrame& BufferManager::fixPage(uint64_t pageId, bool exclusive) {
 	hashTable[pageId]->inUse++;
 
 	// print the content
-	hashTable[pageId]->show();
+	//hashTable[pageId]->show();
 	return *hashTable[pageId];
 
 }
@@ -124,7 +125,7 @@ void BufferManager::freePage() {
 	throw -3;
 }
 void BufferManager::unfixPage(BufferFrame& frame, bool isDirty) {
-	cout << "will unfix " << endl;
+	cout << "unfix " << frame.pageId << endl;
 	
 	// force strategy
 	if (isDirty) {
@@ -135,14 +136,14 @@ void BufferManager::unfixPage(BufferFrame& frame, bool isDirty) {
 	}
 	frame.inUse--;	
 
-	frame.show();
+	//frame.show();
 }
 
 void BufferManager::readFile(uint64_t pageId, void* buff) {
-	cout << "got page "<<pageId;
+	//cout << "got page "<<pageId;
 	uint64_t segment = (pageId  & 0xFFFFFFFF00000000) >> 32;
 	uint64_t page = (pageId & 0x00000000FFFFFFFF);
-	cout << "segment is "<<segment << " page " << page << " "<< endl;
+	//cout << "segment is "<<segment << " page " << page << " "<< endl;
 	
 	int fd;
 	if ((fd = open(to_string(segment).c_str(), O_RDWR)) < 0) {
@@ -151,24 +152,32 @@ void BufferManager::readFile(uint64_t pageId, void* buff) {
 	if (lseek(fd, page * pageSize	, SEEK_SET) < 0) {
 		cerr << "error lseek  " << strerror(errno) << std::endl;
 	}
-	read(fd, buff, pageSize);
+	if (read(fd, buff, pageSize) < 0) {
+		cerr << "error read  " << strerror(errno) << std::endl;
+	}
 	close(fd);
 }
 
 void BufferManager::writeFile(uint64_t pageId, void* buff) {
-	cout << "write page "<<pageId;
+	cout << "write page "<<pageId<<endl;
 	uint64_t segment = (pageId  & 0xFFFFFFFF00000000) >> 32;
 	uint64_t page = (pageId & 0x00000000FFFFFFFF);
-	cout << "segment is "<<segment << " page " << page << " "<< endl;
+	//cout << "segment is "<<segment << " page " << page << " "<< endl;
 	
 	int fd;
 	if ((fd = open(to_string(segment).c_str(), O_RDWR)) < 0) {
 		std::cerr << "cannot open file" << strerror(errno) << std::endl;
 	}
+	cout << "open";
 	if (lseek(fd, page * pageSize	, SEEK_SET) < 0) {
 		cerr << "error lseek  " << strerror(errno) << std::endl;
 	}
-	write(fd, buff, pageSize);
+	cout << "seek";
+
+	if (write(fd, buff, pageSize) < 0) {
+		cerr << "error write  " << strerror(errno) << std::endl;
+	}
+	cout << "writte";
 	close(fd);
 }
 
@@ -189,7 +198,7 @@ BufferManager::~BufferManager() {
 }
 
 #include "BufferManager.h"
-
+/*
 int main() {
 	BufferManager* bm = new BufferManager(5);
 	
@@ -204,4 +213,4 @@ int main() {
 	bm->~BufferManager();
 	free(bm);
 	return 1;
-}
+}*/
