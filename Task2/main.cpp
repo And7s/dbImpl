@@ -73,6 +73,10 @@ BufferFrame& BufferManager::fixPage(uint64_t pageId, bool exclusive) {
 	cout << "loaded "<< loadedPages << "pags";
 
 	if (hashTable[pageId] == NULL) {	// data is not in memory
+		if (loadedPages == pageCount) {
+			cout << "out of memory"<< endl;
+			freePage();
+		}
 		loadedPages++;
 		BufferFrame* bf = new BufferFrame(pageId);
 		readFile(pageId, bf->data);
@@ -81,6 +85,20 @@ BufferFrame& BufferManager::fixPage(uint64_t pageId, bool exclusive) {
 	} else {
 		cout << "have already " << pageId <<endl;
 	}
+	if (hashTable[pageId]->exclusive) {
+		cerr << "someone else uses alrady this page exclusivly" << endl;
+		throw -2;
+	}
+
+	if (exclusive) {
+		cout << "try exclusive";
+		if (hashTable[pageId]->exclusive || hashTable[pageId]->inUse > 0) {
+			cerr << "cannot grant exclusive use " << endl;
+			throw -1;	// only one exclusive allowed, TODO: wait
+		}
+		hashTable[pageId]->exclusive = true;
+	}
+
 	
 	hashTable[pageId]->inUse++;
 
@@ -90,12 +108,30 @@ BufferFrame& BufferManager::fixPage(uint64_t pageId, bool exclusive) {
 
 }
 
+void BufferManager::freePage() {
+	// TODO: better erase strategy
+	for (auto it = hashTable.begin(); it != hashTable.end(); it++) {
+		if (!it->second->exclusive && it->second->inUse == 0) {
+			// as we use force, we can directly free it
+			hashTable.erase(it);
+			cout << "erase "<<endl;
+			loadedPages--;
+			return;
+		}
+	}
+	// wasnt able to free memory
+	cerr << "no more meory "<<endl;
+	throw -3;
+}
 void BufferManager::unfixPage(BufferFrame& frame, bool isDirty) {
 	cout << "will unfix " << endl;
 	
 	// force strategy
 	if (isDirty) {
 		writeFile(frame.pageId, frame.data);
+	}
+	if (frame.exclusive) {
+		frame.exclusive = false;
 	}
 	frame.inUse--;	
 
@@ -155,14 +191,15 @@ BufferManager::~BufferManager() {
 #include "BufferManager.h"
 
 int main() {
-	BufferManager* bm = new BufferManager(40);
+	BufferManager* bm = new BufferManager(5);
 	
-	BufferFrame& b1 = bm->fixPage(0x0000000200000101, false);
-	((char *)b1.getData())[4]++;// test
-	bm->unfixPage(b1, true);/*
-	for (int i = 0; i < 10; i++) {
-		bm->fixPage(i, false);
-	}*/
+	for (int i = 0; i < 5; i++) {
+		BufferFrame& b1 = bm->fixPage(i, false);
+		bm->unfixPage(b1, false);
+	}
+	BufferFrame& b1 = bm->fixPage(0, false);
+	
+	
 
 	bm->~BufferManager();
 	free(bm);

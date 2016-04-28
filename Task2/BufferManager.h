@@ -43,6 +43,7 @@ public:
 
 	void readFile(uint64_t pageId, void* buff);
 	void writeFile(uint64_t pageId, void* buff);
+	void freePage();
 };
 
 
