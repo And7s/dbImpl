@@ -20,7 +20,7 @@ const int tableSize = 128;
 
 
 using namespace std;
-
+/*
 struct HexCharStruct {
   unsigned char c;
   HexCharStruct(unsigned char _c) : c(_c) { }
@@ -32,7 +32,7 @@ inline std::ostream& operator<<(std::ostream& o, const HexCharStruct& hs) {
 
 inline HexCharStruct hex(unsigned char _c) {
   return HexCharStruct(_c);
-}
+}*/
 
 
 
@@ -43,9 +43,9 @@ BufferFrame::BufferFrame(uint64_t id) {
 	pageId = id;
 }
 void BufferFrame::show() {
-	cout << "BF: " << pageId << " inUse :" << inUse << " isDirty: " <<isDirty << endl;
+	cout << "BF: " << pageId << " inUse :" << inUse << " isDirty: " <<isDirty << " exc "<<exclusive<<  endl;
 	for (int i = 0; i < pageSize; i++) {
-		cout << hex(((char *)data)[i]) << " ";
+		cout << ((int *)data)[i] << " ";
 	}
 
 	cout << endl;
@@ -56,7 +56,7 @@ void* BufferFrame::getData() {
 }
 
 BufferManager::BufferManager(unsigned pageCount_) {
-	cout << "create BufferManager with pages " << pageCount << endl;
+	cout << "create BufferManager with pages " << pageCount_ << endl;
 	pageCount = pageCount_;	// max pages in memory
 	loadedPages = 0;	// how many pages are curently loaded
 	
@@ -70,46 +70,39 @@ BufferFrame::~BufferFrame() {
 BufferFrame& BufferManager::fixPage(uint64_t pageId, bool exclusive) {
 	// this page can 1. be in memory, 2. be on disk
 	
-	cout << "fix "<<pageId<< "(exl. "<< exclusive << ") loaded "<< loadedPages << "pags" << endl;
+	while(true) {
+		table_mutex.lock();
+		cout << "fix "<<pageId<< "(exl. "<< exclusive << ") loaded "<< loadedPages << "pags" << endl;
 
-	if (hashTable[pageId] == NULL) {	// data is not in memory
-		cout <<"hello "<<endl;
-		if (loadedPages == pageCount) {
-			cout << "out of memory"<< endl;
-			freePage();
+		auto it = hashTable.find(pageId);
+		if (it == hashTable.end()) {	// data is not in memory
+			if (loadedPages == pageCount) {
+				freePage();
+			}
+			loadedPages++;
+			BufferFrame* bf = new BufferFrame(pageId);
+			readFile(pageId, bf->data);
+			
+			hashTable[pageId] = bf;
+		} else {
+			cout << "have already " << pageId << "is "<< hashTable[pageId]->exclusive<< " inuse "<<hashTable[pageId]->inUse<< endl;
 		}
-		loadedPages++;
-		BufferFrame* bf = new BufferFrame(pageId);
-		readFile(pageId, bf->data);
-		
-		hashTable[pageId] = bf;
-	} else {
-		cout << "have already " << pageId <<endl;
-	}
-	if (hashTable[pageId]->exclusive) {
-		cerr << "someone else uses alrady this page exclusivly" << endl;
-		throw -2;
-	}
+		if (hashTable[pageId]->exclusive || (exclusive && hashTable[pageId]->inUse > 0)) {
+			cerr << "cannot grant this page now" << endl;
+			table_mutex.unlock();
+		} else {
+			hashTable[pageId]->exclusive = exclusive;
+			hashTable[pageId]->inUse++;
 
-	if (exclusive) {
-		//cout << "try exclusive";
-		if (hashTable[pageId]->exclusive || hashTable[pageId]->inUse > 0) {
-			cerr << "cannot grant exclusive use " << endl;
-			throw -1;	// only one exclusive allowed, TODO: wait
+			BufferFrame& bf = *hashTable[pageId];
+			table_mutex.unlock();
+			return  bf;
 		}
-		hashTable[pageId]->exclusive = true;
 	}
-
-	
-	hashTable[pageId]->inUse++;
-
-	// print the content
-	//hashTable[pageId]->show();
-	return *hashTable[pageId];
-
 }
 
 void BufferManager::freePage() {
+	
 	// TODO: better erase strategy
 	for (auto it = hashTable.begin(); it != hashTable.end(); it++) {
 		if (!it->second->exclusive && it->second->inUse == 0) {
@@ -121,10 +114,12 @@ void BufferManager::freePage() {
 		}
 	}
 	// wasnt able to free memory
-	cerr << "no more meory "<<endl;
+	cerr << "no more memory "<<endl;
 	throw -3;
 }
 void BufferManager::unfixPage(BufferFrame& frame, bool isDirty) {
+	
+	table_mutex.lock();
 	cout << "unfix " << frame.pageId << endl;
 	
 	// force strategy
@@ -134,9 +129,9 @@ void BufferManager::unfixPage(BufferFrame& frame, bool isDirty) {
 	if (frame.exclusive) {
 		frame.exclusive = false;
 	}
-	frame.inUse--;	
 
-	//frame.show();
+	frame.inUse--;	
+	table_mutex.unlock();
 }
 
 void BufferManager::readFile(uint64_t pageId, void* buff) {

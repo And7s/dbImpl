@@ -8,7 +8,8 @@
 #include "BufferManager.h"
 
 
-//g++ buffertest.cpp main.cpp -pthread -std=c++11
+//  g++ buffertest.cpp main.cpp -pthread -std=c++11 && ./a.out 15 10 1
+
 
 using namespace std;
 

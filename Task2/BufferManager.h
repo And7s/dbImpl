@@ -3,7 +3,7 @@
 #include <iostream>
 #include <string>
 #include <unordered_map>
-
+#include <mutex>
 
 
 
@@ -28,7 +28,7 @@ private:
 
 	unsigned pageCount;
 	unsigned loadedPages;
-
+	std::mutex table_mutex;
 	std::unordered_map<uint64_t, BufferFrame *> hashTable;
 public: 
 
