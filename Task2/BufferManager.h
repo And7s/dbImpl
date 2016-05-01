@@ -25,7 +25,6 @@ public:
 
 class BufferManager {
 private:
-
 	unsigned pageCount;
 	unsigned loadedPages;
 	std::mutex table_mutex;
