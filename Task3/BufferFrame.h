@@ -1,6 +1,6 @@
 #pragma once
 #include <iostream>
-#define pageSize 1024
+#define pageSize 64
 
 class BufferFrame {
 public:
