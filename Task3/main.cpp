@@ -38,6 +38,7 @@ public:
 	BufferManager* bm;
 	int lastTochedFrame = 1;	// zero is reserved for the segment
 	int curUsedPages = 0;	// how many pages are (partially) filled with user data
+	int globalSidCounter = 0;
 	SPSegment() {
 		cout << "create spsegment";
 		bm = new BufferManager(10);
@@ -45,7 +46,8 @@ public:
 		BufferFrame& frame = bm->fixPage(0, false);
 		int* pointer = (int*)frame.getData();
 		curUsedPages = pointer[0];
-		curUsedPages = 1;
+		globalSidCounter = pointer[0];
+		if (curUsedPages < 1) curUsedPages = 1;	// on creating the data ther is a zero, but zero page is reserved for internal usage
 		cout << "this segment uses " << curUsedPages << endl;
 
 		bm->unfixPage(frame, false);
@@ -58,6 +60,7 @@ public:
 		BufferFrame& frame = bm->fixPage(0, true);
 		int* pointer = (int*)frame.getData();
 		pointer[0] = curUsedPages;
+		pointer[1] = globalSidCounter;
 		bm->unfixPage(frame, true);
 
 		printAllRecords();
@@ -90,9 +93,14 @@ public:
 			printFrame(frame);
 			int* pointer = (int*)frame.getData();
 			int count = pointer[0];
-			for (int j = 1; j <= count; j++) {
-				int size = (j > 1) ? pointer[j] - pointer[j - 1] : pointer[j];
-				cout << "P: " << i << " S: " << j << " size " << size << "j: " << pointer[j] << " j-1: " << pointer[j - 1] <<endl;
+			for (int j = 0; j < count; j++) {
+				int size = (j > 0) ? pointer[j * 2 + 1] - pointer[j * 2 - 1] : pointer[j * 2 + 1];
+
+				cout << "P: " << i << " S: " << pointer[j * 2 + 2] << " size " << size << " = ";
+				for (int k = 0; k < size; k++) {
+					printHex(((unsigned char*)frame.getData())[pageSize - pointer[j * 2 + 1] + k]);
+				}
+				cout << endl;
 			}
 
 			bm->unfixPage(frame, false);
@@ -107,10 +115,12 @@ public:
 			int* pointer = (int*)frame.getData();
 
 			// the whichth element this had been insereted (fist element is elemnt 1), is equal to the position wherr the pointer has been stored
-			int slotId = pointer[0] + 1;	
-			int offset = pointer[slotId - 1] + size;	// offset where the record will be stored 
+
+			int numEntries = pointer[0];
+
+			int offset = (numEntries > 0) ? pointer[numEntries * 2 - 1] + size: size;	// offset where the record will be stored 
 			
-			if (pageSize - offset < (slotId + 1) * (int)(sizeof(int))) {
+			if (pageSize - offset < (numEntries * 2 + 3) * (int)(sizeof(int))) {
 				cout << endl << "im full " <<endl;
 				bm->unfixPage(frame, false);
 
@@ -119,17 +129,10 @@ public:
 				cout << "switch to page " << lastTochedFrame << endl;
 			} else {
 
-				cout << "return frame with " << (pageSize - offset - slotId * sizeof(int))<< endl;
-				cout << "Ps"<<pageSize << "off"<<offset<<"num"<<slotId<<endl;
-				cout << "int "<<(int)pageSize<< " off int "<<(int)offset<<endl;
-				cout << "div"<< (pageSize - offset)<< "<= " << (slotId * sizeof(int)) << endl;
-				cout << "bool"<<(pageSize - offset <= slotId * 4)<<endl;
-				cout << "inverse"<<((pageSize - offset) > slotId * sizeof(int))<<endl;
-				cout << "pointer zero "<< pointer[0] << endl;
+				cout << "return frame ";				
+				cout << "Ps"<<pageSize << "off"<<offset<<"numEntries"<< numEntries << endl;
+				
 
-				uint u = 64;
-				int i = 1-u;
-				cout << "1-u "<<i<< "compare "<<(-u < u)<<endl;
 				printFrame(frame);
 				return frame;
 			}
@@ -146,24 +149,27 @@ public:
 
 		BufferFrame& frame = getEmptyFrame(r.size);
 		int* pointer = (int*)frame.getData();
-		int numPos = pointer[0] + 1;	
-		int offset = pointer[numPos - 1]  + r.size;	// offset where the record will be stored 
-			
 		pointer[0]++;	// counter is being incremented
-		pointer[numPos] = offset;
+		int numEntries = pointer[0];
+		int offset = (numEntries > 0) ? pointer[numEntries * 2 - 3] : 0;	// pointer to the last element
+		offset += r.size;	// pointer where i will store the current record 
+			
+		
+		pointer[numEntries * 2 - 1] = offset;
+		pointer[numEntries * 2] = globalSidCounter++;
 
-		cout << endl << "remaining: " << (pageSize - offset - (numPos + 1) * sizeof(int)) << endl;
+		cout << endl << "remaining: " << (pageSize - offset - (numEntries * 2 + 1) * sizeof(int)) << endl;
 
 		cout << "go record with "<<r.size << endl;
 //		cout << "holds value "<< hex(r.data[0])<<endl;
-		cout << "nth "<<numPos<<"at offst "<<offset<< " = position" << (pageSize - offset) << endl;
+		cout << "numEntries "<<numEntries<<"at offst "<<offset<< " = position" << (pageSize - offset) << endl;
 		memcpy((char*)frame.getData() + pageSize - offset, r.data, r.size);
 		printFrame(frame);
 
 		bm->unfixPage(frame, true);
 		TID tid = *new TID();
 		tid.pageId = frame.pageId;
-		tid.slotId = numPos;
+		tid.slotId = numEntries;
 
 		return tid;
 	}
@@ -172,23 +178,61 @@ public:
 		Record re;
 		BufferFrame& frame = bm->fixPage(tid.pageId, false);
 		int* pointer = (int*)frame.getData();
-		int offset = pointer[tid.slotId];	// the offset position
-		// if it has precessing items, the size is the difference of the offsets
-		re.size = (tid.slotId > 1) ? offset - pointer[tid.slotId - 1] : offset;
-		
-		cout << "size is " << re.size << endl;
+		int numEntries = pointer[0];	// the offset position
 
-		re.data = (char*)malloc(re.size);
-		memcpy(re.data, (char*)frame.getData() + pageSize - offset, re.size);
-		//cout << "data is "<<hex(re.data[0])<<endl;
+		for (int i = 0; i < numEntries; i++) {
+			if (pointer[i * 2] == tid.slotId) {	// found the element
+				int offset = pointer[i * 2 - 1];
+				re.size = (i > 0) ? offset - pointer[i * 2 - 3] : offset;
+				cout << "size is " << re.size << endl;
+
+				re.data = (char*)malloc(re.size);
+				memcpy(re.data, (char*)frame.getData() + pageSize - offset, re.size);
+				bm->unfixPage(frame, false);
+				return re;
+			}
+		}
+		bm->unfixPage(frame, false);
+		cout << "didnt find the Record";
 		return re;
+		
+
+	}
+
+	void remove(TID tid) {
+		
+		cout << "will remove "<<tid.pageId << " at slot "<<tid.slotId<<endl;
+		BufferFrame& frame = bm->fixPage(tid.pageId, false);
+		printFrame(frame);
+		cout << "on this page are " << ((int*)frame.getData())[0] << "slots"<<endl;
+		int* pointer = (int*)frame.getData();
+		int elAfter = pointer[0] - tid.slotId;	// how many elements after thsi removed (those need to be moved)
+		int offset = pointer[tid.slotId];
+		int size = (tid.slotId > 1) ? offset - pointer[tid.slotId - 1] : offset;
+		int lastOffset = pointer[pointer[0]];
+
+
+		char* dataPointer = (char*)frame.getData();
+		// shift the data after the removed element by size
+		memmove(dataPointer + pageSize - lastOffset + size, dataPointer + pageSize - lastOffset, lastOffset - offset);	 
+
+		// reaign poiners
+		for (int i = tid.slotId; i < pointer[0]; i++) {
+			pointer[i] = pointer[i + 1] - size;
+		}
+		pointer[0]--;
+		cout << "el after "<<elAfter<<endl;	
+		cout << "offset "<<offset<<" size "<<size <<endl;
+		printFrame(frame);
+		bm->unfixPage(frame, true);
+		printAllRecords();
 
 	}
 };
 
 int main(int argc, char** argv) {
 	// create an extensive big file
-	/*int maxPagesOnDisk = 10;
+	int maxPagesOnDisk = 10;
 	int fd, ret;
 	if ((fd = open("0", O_CREAT|O_TRUNC|O_WRONLY, S_IRUSR|S_IWUSR)) < 0) {
 		std::cerr << "cannot open file '" << "0" << "': " << strerror(errno) << std::endl;
@@ -196,20 +240,16 @@ int main(int argc, char** argv) {
 	}
 	if ((ret = posix_fallocate(fd, 0, maxPagesOnDisk * pageSize * sizeof(uint64_t))) != 0)
 		std::cerr << "warning: could not allocate file space: " << strerror(ret) << std::endl;
-	close(fd);*/
-
-
+	close(fd);
 
 	SPSegment* sps = new SPSegment();
-/* 
-	Record* r = new Record();
-	r->size = 2;
-	char* data = (char*)malloc(2);
-	data[0] = 9;
-	r->data = data;
 
-	sps->insert(*r);*/
-
+/*
+	
+	TID tid;
+	tid.pageId = 1;
+	tid.slotId = 5;
+	sps->remove(tid);*/
 
 	Record* r = new Record();
 	r->size = 1;
@@ -248,7 +288,19 @@ int main(int argc, char** argv) {
 
 	TID tid = sps->insert(*r);
 	sps->lookup(tid);
+	sps->printAllRecords();	
+	sps->remove(tid);
 
-	sps->~SPSegment();
+	r = new Record();
+	r->size = 2;
+	data = (char*)malloc(2);
+	data[0] = 11;
+	r->data = data;
+
+	sps->insert(*r);
+
+	
+	sps->printAllRecords();
+	//sps->~SPSegment();
 
 }
