@@ -156,7 +156,7 @@ public:
 			
 		
 		pointer[numEntries * 2 - 1] = offset;
-		pointer[numEntries * 2] = globalSidCounter++;
+		pointer[numEntries * 2] = globalSidCounter;
 
 		cout << endl << "remaining: " << (pageSize - offset - (numEntries * 2 + 1) * sizeof(int)) << endl;
 
@@ -169,7 +169,8 @@ public:
 		bm->unfixPage(frame, true);
 		TID tid = *new TID();
 		tid.pageId = frame.pageId;
-		tid.slotId = numEntries;
+		tid.slotId = globalSidCounter;
+		globalSidCounter++;
 
 		return tid;
 	}
@@ -204,29 +205,41 @@ public:
 		cout << "will remove "<<tid.pageId << " at slot "<<tid.slotId<<endl;
 		BufferFrame& frame = bm->fixPage(tid.pageId, false);
 		printFrame(frame);
-		cout << "on this page are " << ((int*)frame.getData())[0] << "slots"<<endl;
 		int* pointer = (int*)frame.getData();
-		int elAfter = pointer[0] - tid.slotId;	// how many elements after thsi removed (those need to be moved)
-		int offset = pointer[tid.slotId];
-		int size = (tid.slotId > 1) ? offset - pointer[tid.slotId - 1] : offset;
-		int lastOffset = pointer[pointer[0]];
+		int numEntries = pointer[0];	// the offset position
 
+		for (int i = 0; i < numEntries; i++) {
+			if (pointer[i * 2 + 2] == tid.slotId) {	// found the element
+				cout << "fount at "<<i << "of "<<numEntries<<endl;
+				int elAfter = numEntries - i - 1;
+				int offset = pointer[i * 2 + 1];
+				int size = (i > 0) ? offset - pointer[i * 2 - 1] : offset;
 
-		char* dataPointer = (char*)frame.getData();
-		// shift the data after the removed element by size
-		memmove(dataPointer + pageSize - lastOffset + size, dataPointer + pageSize - lastOffset, lastOffset - offset);	 
+				int lastOffset = pointer[numEntries * 2 - 1];
 
-		// reaign poiners
-		for (int i = tid.slotId; i < pointer[0]; i++) {
-			pointer[i] = pointer[i + 1] - size;
+				cout << "elAfter "<<elAfter<<"offset"<<offset<<" size "<<size << "lastOffset " << lastOffset << endl;
+				char* dataPointer = (char*)frame.getData();
+				// shift the data after the removed element by size
+				memmove(dataPointer + pageSize - lastOffset + size, dataPointer + pageSize - lastOffset, lastOffset - offset);	 
+
+				// reaign poiners
+				// TODO
+				memmove(dataPointer + (i * 2 + 1) * sizeof(int), dataPointer + (i * 2 + 3)* sizeof(int), elAfter * 2 * sizeof(int));	 
+				// reduce offsets
+				for (int j = 0; j < elAfter; j++) {
+					pointer[(i +j) * 2 + 1] -= size;
+				}
+
+				pointer[0]--;
+				cout << "el after "<<elAfter<<endl;	
+				cout << "offset "<<offset<<" size "<<size <<endl;
+				printFrame(frame);
+				bm->unfixPage(frame, true);
+				printAllRecords();
+				
+
+			}
 		}
-		pointer[0]--;
-		cout << "el after "<<elAfter<<endl;	
-		cout << "offset "<<offset<<" size "<<size <<endl;
-		printFrame(frame);
-		bm->unfixPage(frame, true);
-		printAllRecords();
-
 	}
 };
 
@@ -263,14 +276,14 @@ int main(int argc, char** argv) {
 
 
 	r = new Record();
-	r->size = 1;
-	data = (char*)malloc(1);
+	r->size = 5;
+	data = (char*)malloc(5);
 	data[0] = 56;
 	r->data = data;
 
 	sps->insert(*r);
 
-	for (int i = 0; i < 10; i++) {
+	/*for (int i = 0; i < 10; i++) {
 		r = new Record();
 		r->size = 5;
 		data = (char*)malloc(5);
@@ -278,19 +291,37 @@ int main(int argc, char** argv) {
 		r->data = data;
 
 		sps->insert(*r);
-	}
+	}*/
 
 	r = new Record();
 	r->size = 1;
 	data = (char*)malloc(1);
 	data[0] = 10;
 	r->data = data;
+		r = new Record();
+	r->size = 1;
+	data = (char*)malloc(1);
+	data[0] = 11;
+	r->data = data;
+
 
 	TID tid = sps->insert(*r);
-	sps->lookup(tid);
-	sps->printAllRecords();	
+	tid.slotId = 1;
 	sps->remove(tid);
 
+
+
+	r = new Record();
+	r->size = 2;
+	data = (char*)malloc(2);
+	data[0] = 66;
+	data[1] = 1;
+	r->data = data;
+
+	sps->insert(*r);
+
+
+/*
 	r = new Record();
 	r->size = 2;
 	data = (char*)malloc(2);
@@ -300,7 +331,7 @@ int main(int argc, char** argv) {
 	sps->insert(*r);
 
 	
-	sps->printAllRecords();
+	sps->printAllRecords();*/
 	//sps->~SPSegment();
 
 }
