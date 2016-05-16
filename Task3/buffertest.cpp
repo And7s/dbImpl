@@ -1,146 +1,145 @@
 #include <iostream>
 #include <vector>
-#include <stdlib.h>
-#include <stdint.h>
+#include <string>
+#include <cstdint>
+#include <cassert>
+#include <string.h>
+#include <unordered_map>
+#include <vector>
 #include <assert.h>
-#include <pthread.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "BufferManager.h"
-
 #include "SPSegment.h"
-
-//  g++ buffertest.cpp main.cpp -pthread -std=c++11 && ./a.out 15 10 1
-
 
 using namespace std;
 
-BufferManager* bm;
-unsigned pagesOnDisk;
-unsigned pagesInRAM;
-unsigned threadCount;
-unsigned* threadSeed;
-volatile bool stop=false;
-
-unsigned randomPage(unsigned threadNum) {
-   // pseudo-gaussian, causes skewed access pattern
-   unsigned page=0;
-   for (unsigned  i=0; i<20; i++)
-      page+=rand_r(&threadSeed[threadNum])%pagesOnDisk;
-   return page/20;
+// todo: adapt to your implementation
+uint64_t extractPage(TID tid) {
+   return tid.pageId;
 }
 
-static void* scan(void *arg) {
-   // scan all pages and check if the counters are not decreasing
-   vector<unsigned> counters(pagesOnDisk, 0);
+const unsigned initialSize = 100; // in (slotted) pages
+const unsigned totalSize = initialSize+50; // in (slotted) pages
+const unsigned maxInserts = 1000ul*1000ul;
+const unsigned maxDeletes = 10ul*1000ul;
+const unsigned maxUpdates = 10ul*1000ul;
+const double loadFactor = .8; // percentage of a page that can be used to store the payload
+const vector<string> testData = {
+   "640K ought to be enough for anybody",
+   "Beware of bugs in the above code; I have only proved it correct, not tried it",
+   "Tape is Dead. Disk is Tape. Flash is Disk.",
+   "for seminal contributions to database and transaction processing research and technical leadership in system implementation",
+   "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce iaculis risus ut ipsum pellentesque vitae venenatis elit viverra. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Curabitur ante mi, auctor in aliquet non, sagittis ac est. Phasellus in viverra mauris. Quisque scelerisque nisl eget sapien venenatis nec consectetur odio aliquam. Maecenas lobortis mattis semper. Ut lacinia urna nec lorem lacinia consectetur. In non enim vitae dui rhoncus dictum. Sed vel fringilla felis. Curabitur tincidunt justo ac nulla scelerisque accumsan. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Cras tempor venenatis orci, quis vulputate risus dapibus id. Aliquam elementum congue nulla, eget tempus justo fringilla sed. Maecenas odio erat, commodo a blandit quis, tincidunt vel risus. Proin sed ornare tellus. Donec tincidunt urna ac turpis rutrum varius. Etiam vehicula semper velit ut mollis. Aliquam quis sem massa. Morbi ut massa quis purus ullamcorper aliquet. Sed nisi justo, fermentum id placerat eu, dignissim eu elit. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Suspendisse interdum laoreet commodo. Nullam turpis velit, tristique in sodales sit amet, molestie et diam. Quisque blandit velit quis augue sodales vestibulum. Phasellus ut magna non arcu egestas volutpat. Etiam id ultricies ligula. Donec non lectus eget risus lobortis pretium. Sed rutrum augue eu tellus scelerisque sit amet interdum massa volutpat. Maecenas nunc ligula, blandit quis adipiscing eget, fermentum nec massa. Vivamus in commodo nunc. Quisque elit mi, consequat eget vestibulum lacinia, ultrices eu purus. Vestibulum tincidunt consequat nulla, quis tempus eros volutpat sed. Aliquam elementum massa vel ligula bibendum aliquet non nec purus. Nunc sollicitudin orci sed nisi eleifend molestie. Praesent scelerisque vehicula quam et dignissim. Suspendisse potenti. Sed lacus est, aliquet auctor mollis ac, iaculis at metus. Aenean at risus sed lectus volutpat bibendum non id odio. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Mauris purus lorem, congue ac tristique sit amet, gravida eu neque. Nullam lacus tellus, venenatis a blandit ac, consequat sed massa. Mauris ultrices laoreet lorem. Nam elementum, est vel elementum commodo, enim tellus mattis diam, a bibendum mi enim vitae magna. Aliquam nisi dolor, aliquam at porta sit amet, tristique id nulla. In purus leo, tristique eget faucibus id, pharetra vel diam. Nunc eleifend commodo feugiat. Mauris sed diam quis est dictum rutrum in eu erat. Suspendisse potenti. Duis adipiscing nisl eu augue dignissim sagittis. Praesent vitae nisl dolor. Duis interdum, dolor a viverra imperdiet, lorem lectus luctus sem, sit amet rutrum augue dolor id erat. Vestibulum ac orci condimentum velit mollis scelerisque eu eu est. Aenean fringilla placerat enim, placerat adipiscing felis feugiat quis. Cras sed."
+};
 
-   while (!stop) {
-      unsigned start = random()%(pagesOnDisk-10);
-      for (unsigned page=start; page<start+10; page++) {
-         BufferFrame& bf = bm->fixPage(page, false);
-         unsigned newcount = reinterpret_cast<unsigned*>(bf.getData())[0];
-         assert(counters[page]<=newcount);
-         counters[page]=newcount;
-         bm->unfixPage(bf, false);
-      }
+
+class Random64 {
+   uint64_t state;
+   public:
+   explicit Random64(uint64_t seed=88172645463325252ull) : state(seed) {}
+   uint64_t next() {
+      state^=(state<<13); state^=(state>>7); return (state^=(state<<17));
    }
-
-   return NULL;
-}
-
-static void* readWrite(void *arg) {
-   // read or write random pages
-   uintptr_t threadNum = reinterpret_cast<uintptr_t>(arg);
-
-   uintptr_t count = 0;
-   for (unsigned i=0; i<100000/threadCount; i++) {
-      bool isWrite = rand_r(&threadSeed[threadNum])%128<10;
-      BufferFrame& bf = bm->fixPage(randomPage(threadNum), isWrite);
-
-      if (isWrite) {
-         count++;
-         reinterpret_cast<unsigned*>(bf.getData())[0]++;
-      }
-      bm->unfixPage(bf, isWrite);
-   }
-
-   return reinterpret_cast<void*>(count);
-}
+};
 
 int main(int argc, char** argv) {
+// create a large enough file
+   int maxPagesOnDisk = 100000;
+   int fd, ret;
+   if ((fd = open("0", O_CREAT|O_TRUNC|O_WRONLY, S_IRUSR|S_IWUSR)) < 0) {
+      std::cerr << "cannot open file '" << "0" << "': " << strerror(errno) << std::endl;
+      return -1;
+   }
+   if ((ret = posix_fallocate(fd, 0, maxPagesOnDisk * pageSize * sizeof(uint64_t))) != 0)
+      std::cerr << "warning: could not allocate file space: " << strerror(ret) << std::endl;
+   close(fd);
+// 
 
-   std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+   SPSegment* sps = new SPSegment();
 
+   // Bookkeeping
+   unordered_map<TID, unsigned> values; // TID -> testData entry
+   unordered_map<unsigned, unsigned> usage; // pageID -> bytes used within this page
 
-   if (argc==4) {
-      pagesOnDisk = atoi(argv[1]);
-      pagesInRAM = atoi(argv[2]);
-      threadCount = atoi(argv[3]);
-   } else {
-      cerr << "usage: " << argv[0] << " <pagesOnDisk> <pagesInRAM> <threads>" << endl;
-      exit(1);
+   // Setting everything
+   SPSegment& sp = *(new SPSegment());
+   Random64 rnd;
+
+   // Insert some records
+   for (unsigned i=0; i<maxInserts; ++i) {
+      // Select string/record to insert
+      uint64_t r = rnd.next()%testData.size();
+      const string s = testData[r];
+
+      // Check that there is space available for 's'
+      bool full = true;
+      for (unsigned p=0; p<initialSize; ++p) {
+         if (usage[p] < loadFactor*pageSize) {
+            full = false;
+            break;
+         }
+      }
+      if (full)
+         break;
+
+      // Insert record
+      TID tid = sp.insert(Record(s.size(), s.c_str()));
+      assert(values.find(tid)==values.end()); // TIDs should not be overwritten
+      values[tid]=r;
+      unsigned pageId = extractPage(tid); // extract the pageId from the TID
+      assert(pageId < initialSize); // pageId should be within [0, initialSize)
+      usage[pageId]+=s.size();
    }
 
-   threadSeed = new unsigned[threadCount];
-   for (unsigned i=0; i<threadCount; i++)
-      threadSeed[i] = i*97134;
+   // Lookup & delete some records
+   for (unsigned i=0; i<maxDeletes; ++i) {
+      // Select operation
+      bool del = rnd.next()%10 == 0;
 
-   bm = new BufferManager(pagesInRAM);
+      // Select victim
+      TID tid = values.begin()->first;
+      unsigned pageId = extractPage(tid);
+      const std::string& value = testData[(values.begin()->second)%testData.size()];
+      
+      unsigned len = value.size();
 
-   vector<pthread_t> threads(threadCount);
-   pthread_attr_t pattr;
-   pthread_attr_init(&pattr);
+      // Lookup
+      Record rec = sp.lookup(tid);
+      assert(rec.getLen() == len);
+      assert(memcmp(rec.getData(), value.c_str(), len)==0);
 
-   // set all counters to 0
-   for (unsigned i=0; i<pagesOnDisk; i++) {
-      BufferFrame& bf = bm->fixPage(i, true);
-      reinterpret_cast<unsigned*>(bf.getData())[0]=0;
-      bm->unfixPage(bf, true);
+      if (del) { // do delete
+         assert(sp.remove(tid));
+         values.erase(tid);
+         usage[pageId]-=len;
+      }
    }
 
-   // start scan thread
-   pthread_t scanThread;
-   pthread_create(&scanThread, &pattr, scan, NULL);
+   // Update some values ('usage' counter invalid from here on)
+   for (unsigned i=0; i<maxUpdates; ++i) {
+      // Select victim
+      TID tid = values.begin()->first;
 
-   // start read/write threads
-   for (unsigned i=0; i<threadCount; i++)
-      pthread_create(&threads[i], &pattr, readWrite, reinterpret_cast<void*>(i));
+      // Select new string/record
+      uint64_t r = rnd.next()%testData.size();
+      const string s = testData[r];
 
-   // wait for read/write threads
-   unsigned totalCount = 0;
-   for (unsigned i=0; i<threadCount; i++) {
-      void *ret;
-      pthread_join(threads[i], &ret);
-      totalCount+=reinterpret_cast<uintptr_t>(ret);
+      // Replace old with new value
+      sp.update(tid, Record(s.size(), s.c_str()));
+      values[tid]=r;
    }
 
-   // wait for scan thread
-   stop=true;
-   pthread_join(scanThread, NULL);
-
-   // restart buffer manager
-   delete bm;
-   bm = new BufferManager(pagesInRAM);
-   
-   // check counter
-   unsigned totalCountOnDisk = 0;
-   for (unsigned i=0; i<pagesOnDisk; i++) {
-      BufferFrame& bf = bm->fixPage(i,false);
-      totalCountOnDisk+=reinterpret_cast<unsigned*>(bf.getData())[0];
-      bm->unfixPage(bf, false);
+   // Lookups
+   for (auto p : values) {
+      TID tid = p.first;
+      const std::string& value = testData[p.second];
+      unsigned len = value.size();
+      Record rec = sp.lookup(tid);
+      assert(rec.getLen() == len);
+      assert(memcmp(rec.getData(), value.c_str(), len)==0);
    }
 
-   std::chrono::steady_clock::time_point end= std::chrono::steady_clock::now();
-
-   std::cout << "duration: " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << " microseconcds" << std::endl;
-
-
-   if (totalCount==totalCountOnDisk) {
-      cout << "test successful" << endl;
-      delete bm;
-      return 0;
-   } else {
-      cerr << "error: expected " << totalCount << " but got " << totalCountOnDisk << endl;
-      delete bm;
-      return 1;
-   }
+   return 0;
 }

@@ -1,15 +1,22 @@
+#pragma once
 #include "BufferManager.h"
+#include "Record.hpp"
 
-class TID {
+struct TID {
 public:
 	uint64_t pageId, slotId;
+	bool operator==(const TID &tid) const {
+		return tid.pageId == pageId && tid.slotId == slotId;
+	}
 };
 
-class Record {
-public:
-	uint size;
-	char* data;
-};
+namespace std {
+	template <> struct hash<TID> {
+		size_t operator()(const TID & tid) const {
+			return (tid.slotId);
+		}
+	};
+}
 
 
 class SPSegment {
@@ -34,5 +41,7 @@ public:
 
 	Record lookup(TID tid);
 
-	void remove(TID tid);
+	bool remove(TID tid);
+
+	bool update(TID tid, const Record& r);
 };
