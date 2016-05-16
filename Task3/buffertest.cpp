@@ -7,6 +7,7 @@
 
 #include "BufferManager.h"
 
+#include "SPSegment.h"
 
 //  g++ buffertest.cpp main.cpp -pthread -std=c++11 && ./a.out 15 10 1
 

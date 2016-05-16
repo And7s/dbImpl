@@ -1,6 +1,6 @@
 
 test: Makefile
-	g++ buffertest.cpp BufferFrame.cpp BufferManager.cpp -pthread -std=c++11 -O0 -g -o test
+	g++ buffertest.cpp BufferManager.cpp SPSegment.cpp BufferFrame.cpp -pthread -std=c++11 -O3 -g -o test
 
 clean:
 	rm -rf test
