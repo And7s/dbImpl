@@ -21,7 +21,9 @@ using namespace std;
 
 
 
-#include "SPSegment.cpp"
+#include "SPSegment2.cpp"
+
+#include "Record.hpp"
 
 int main(int argc, char** argv) {
 	// create an extensive big file
@@ -35,7 +37,52 @@ int main(int argc, char** argv) {
 		std::cerr << "warning: could not allocate file space: " << strerror(ret) << std::endl;
 	close(fd);
 
-	SPSegment* sps = new SPSegment();
+	SPSegment2* sps = new SPSegment2();
+
+	cout << sizeof(TID);
+	cout << sizeof(SegmentHeader) << sizeof(Slot);
+
+
+	
+	char* data = (char*)malloc(2);
+	data[0] = 6;
+	data[1] = 7;
+	Record* r = new Record(2, data);
+
+
+	//TID tid = sps->insert(*r);
+	//cout << "was inserted at p"<<tid.pageId<<"slot "<<tid.slotId<<endl;
+
+
+	//tid = sps->insert(*r);
+	//cout << "was inserted at p"<<tid.pageId<<"slot "<<tid.slotId<<endl;
+
+	//TID tid = sps->insert(*r);
+	//cout << "was inserted at p"<<tid.pageId<<"slot "<<tid.slotId<<endl;
+
+	//sps->lookup(tid);
+
+	data = (char*)malloc(5);
+	data[0] = 1;
+	data[1] = 2;
+	data[2] = 3;
+	data[3] = 4;
+	data[4] = 5;
+	Record* r_big = new Record(5, data);
+
+
+	TID tidd = sps->insert(*r_big);
+	
+TID tid = sps->insert(*r);sps->insert(*r);
+cout << "was inserted at p"<<tid.pageId<<"slot "<<tid.slotId<<endl;
+tid = sps->insert(*r);cout << "insert finished"<<endl;
+	//sps->remove(tidd);
+	sps->insert(*r_big);
+
+	sps->update(tid, *r_big);
+	sps->lookup(tid);
+	sps->remove(tid);
+	sps->lookup(tid);
 
 /*
 	
@@ -44,62 +91,7 @@ int main(int argc, char** argv) {
 	tid.slotId = 5;
 	sps->remove(tid);*/
 
-	Record* r = new Record();
-	r->size = 1;
-	char* data = (char*)malloc(1);
-	data[0] = 6;
-	r->data = data;
-
-	sps->insert(*r);
-
-
-
-
-	r = new Record();
-	r->size = 5;
-	data = (char*)malloc(5);
-	data[0] = 56;
-	r->data = data;
-
-	sps->insert(*r);
-
-	/*for (int i = 0; i < 10; i++) {
-		r = new Record();
-		r->size = 5;
-		data = (char*)malloc(5);
-		data[0] = 65;
-		r->data = data;
-
-		sps->insert(*r);
-	}*/
-
-	r = new Record();
-	r->size = 1;
-	data = (char*)malloc(1);
-	data[0] = 10;
-	r->data = data;
-		r = new Record();
-	r->size = 1;
-	data = (char*)malloc(1);
-	data[0] = 11;
-	r->data = data;
-
-
-	TID tid = sps->insert(*r);
-	tid.slotId = 1;
-	sps->remove(tid);
-
-
-
-	r = new Record();
-	r->size = 2;
-	data = (char*)malloc(2);
-	data[0] = 66;
-	data[1] = 1;
-	r->data = data;
-
-	sps->insert(*r);
-
+	
 
 /*
 	r = new Record();
