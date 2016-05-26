@@ -11,7 +11,7 @@
 #include <unistd.h>
 
 #include "BufferManager.h"
-#include "SPSegment2.h"
+#include "SPSegment.h"
 
 using namespace std;
 
@@ -57,14 +57,14 @@ int main(int argc, char** argv) {
    close(fd);
 // 
 
-   SPSegment2* sps = new SPSegment2();
+   SPSegment* sps = new SPSegment();
 
    // Bookkeeping
    unordered_map<TID, unsigned> values; // TID -> testData entry
    unordered_map<unsigned, unsigned> usage; // pageID -> bytes used within this page
 
    // Setting everything
-   SPSegment2& sp = *(new SPSegment2());
+   SPSegment& sp = *(new SPSegment());
    Random64 rnd;
 
    // Insert some records

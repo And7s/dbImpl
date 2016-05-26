@@ -4,11 +4,9 @@
 
 
 
-
-
 struct TID {
 public:
-	uint64_t pageId, slotId;
+	uint64_t pageId: 32, slotId :32;
 	bool operator==(const TID &tid) const {
 		return tid.pageId == pageId && tid.slotId == slotId;
 	}
@@ -22,16 +20,24 @@ namespace std {
 	};
 }
 
+struct Slot {
+	TID tid;
+	TID indirect;
+	u_int offset;
+	u_int size;
+};
+
+
+
 
 class SPSegment {
 public:
-	BufferManager* bm;
-	int lastTochedFrame = 1;	// zero is reserved for the segment
-	int curUsedPages = 0;	// how many pages are (partially) filled with user data
-	int globalSidCounter = 0;
+
 	SPSegment() ;
 
 	~SPSegment();
+
+	Slot* getSlot(BufferFrame& frame, u_int idx);
 
 	void printHex(unsigned char c);
 	void printFrame(BufferFrame& frame);
@@ -39,13 +45,20 @@ public:
 	// for debugging purposes, prints all the currently inserted records
 	void printAllRecords();
 
-	// searchs and returns a frame with at least size + pointer empty space
-	BufferFrame& getEmptyFrame(int size);
-	TID insert(const Record& r);
+	
 
+	// searchs and returns a frame with at least size + pointer empty space
+	int getEmptyFrame(u_int size);
+	TID insert(const Record& r, TID tid);
+	TID insert(const Record& r);
+	u_int getFreeBytes(BufferFrame& frame);
 	Record lookup(TID tid);
 
 	bool remove(TID tid);
 
 	bool update(TID tid, const Record& r);
+private:
+
+	BufferManager* bm;
+	int globalSidCounter = 0;
 };
