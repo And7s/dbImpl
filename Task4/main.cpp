@@ -60,7 +60,9 @@ int main(int argc, char** argv) {
 
 				b.insert(9, TID());
 b.insert(10, TID());
-
+b.lookup(5);b.lookup(5);
+b.erase(5);
+b.lookup(5);
 	//b.insert(8, TID());
 	//new BTree(4);*/
 	

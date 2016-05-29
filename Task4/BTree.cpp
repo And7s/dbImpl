@@ -22,13 +22,13 @@ private:
 public:
 	BTree();
 	void insert(T key, TID tid);
-	Record lookup(T key);
+	TID lookup(T key);
 	void erase(T key);
 	void printHex(unsigned char c);
 	void printFrame(BufferFrame& frame);
 	TreeNode<T>* getNode(BufferFrame& frame, u_int idx);
 	char* getPointer(BufferFrame& frame, u_int idx);
-	BufferFrame& splitFrames(BufferFrame& parent, BufferFrame& child, u_int updateIdx);
+	void splitFrames(BufferFrame& parent, BufferFrame& child, u_int updateIdx);
 };
 
 template<typename T>
@@ -58,8 +58,6 @@ void BTree<T>::insert(T key, TID tid) {
 		TreeHeader* th = (TreeHeader*) frame.getData();
 		
 		// there must be at least one free spot -> early split
-
-		// still fit?
 		int size = pageSize - sizeof(TreeHeader) - sizeof(TreeNode<T>) * th->amount;
 		cout << "remaining size "<<size<<endl;
 		if (size < sizeof(TreeNode<T>)) {
@@ -80,7 +78,6 @@ void BTree<T>::insert(T key, TID tid) {
 			frame = newFrame;
 			cout << "should be the same "<<frame.pageId<<endl;
 			th = (TreeHeader*) frame.getData();
-
 		}
 
 		if (th->isLeaf) {
@@ -98,7 +95,6 @@ void BTree<T>::insert(T key, TID tid) {
 					insertAt = i;
 					break;
 				}
-
 			}
 			cout << "will insert at "<<insertAt<<endl;
 			// move everything after
@@ -156,7 +152,7 @@ void BTree<T>::insert(T key, TID tid) {
 }
 
 template<typename T>
-BufferFrame& BTree<T>::splitFrames(BufferFrame& parent, BufferFrame& child, u_int updateIdx) {
+void BTree<T>::splitFrames(BufferFrame& parent, BufferFrame& child, u_int updateIdx) {
 	cout << "SPLIT IN FN"<<endl;
 	TreeHeader* thParent = (TreeHeader*) parent.getData();
 	TreeHeader* thChild = (TreeHeader*) child.getData();
@@ -192,8 +188,6 @@ BufferFrame& BTree<T>::splitFrames(BufferFrame& parent, BufferFrame& child, u_in
 	rightPointer->tid.pageId = curUsedPages - 1;
 	rightPointer->key = splitEl->key;
 	thParent->amount++;
-
-	return parent;
 }
 
 template<typename T>
@@ -209,11 +203,102 @@ TreeNode<T>* BTree<T>::getNode(BufferFrame& frame, u_int idx) {
 template<typename T>
 void BTree<T>::erase(T key) {
 	cout << "erase with key "<<key<<endl;
+	cout << "erase with key "<<key<<endl;
+	u_int curIdx = rootIdx;
+	
+	while (true) {
+		cout << "open "<<curIdx<<endl;
+		
+		BufferFrame& frame = bm->fixPage(curIdx, true);
+		TreeHeader* th = (TreeHeader*) frame.getData();
+		
+
+		u_int lookupAt = th->leftNode;
+		u_int lookupIdx = 0;
+		for (int i = 0; i < th->amount; i++) {
+			TreeNode<T>* node = getNode(frame, i);
+			if (key >= node->key) {	// to this right side
+				lookupAt = node->tid.pageId;
+				lookupIdx = i;
+			} else {
+				break;	// already found
+			}
+		}
+
+		if (th-> isLeaf) {
+			cout << "before"<<endl;
+			printFrame(frame);
+			TreeNode<T>* node = getNode(frame, lookupIdx);
+			if (key == node->key) {
+				
+				u_int elAfter = th->amount - lookupIdx - 1;
+				cout << "did find"<<	lookupIdx<< " . " << elAfter <<endl;
+				memmove(
+					getPointer(frame, lookupIdx),
+					getPointer(frame, lookupIdx + 1),
+					sizeof(TreeNode<T>) * elAfter
+				);
+				cout << "DID erase"<<endl;
+				
+				th->amount--;
+				printFrame(frame);
+				bm->unfixPage(frame, true);
+				return;
+
+
+			} else {
+				cout << "not fount"<<endl;
+				// how can i indicate?
+				return;
+				
+			}
+		}
+		bm->unfixPage(frame, true);
+		curIdx = lookupAt;
+	}
 }
 
 template<typename T>
-Record BTree<T>::lookup(T key) {
+TID BTree<T>::lookup(T key) {
 	cout << "lookup with key "<<key<<endl;
+	u_int curIdx = rootIdx;
+	
+	while (true) {
+		cout << "open "<<curIdx<<endl;
+		
+		BufferFrame& frame = bm->fixPage(curIdx, true);
+		TreeHeader* th = (TreeHeader*) frame.getData();
+		
+
+		u_int lookupAt = th->leftNode;
+		u_int lookupIdx = 0;
+		for (int i = 0; i < th->amount; i++) {
+			TreeNode<T>* node = getNode(frame, i);
+			if (key >= node->key) {	// to this right side
+				lookupAt = node->tid.pageId;
+				lookupIdx = i;
+			} else {
+				break;	// already found
+			}
+		}
+
+		if (th-> isLeaf) {
+			TreeNode<T>* node = getNode(frame, lookupIdx);
+			if (key == node->key) {
+				cout << "did find"<<endl;
+				bm->unfixPage(frame, true);
+				return node->tid;	// this could be dangeous, as the memory could be freed by the bm
+			} else {
+				cout << "not fount"<<endl;
+				// how can i indicate?
+				return TID();
+			}
+		} else {
+			bm->unfixPage(frame, true);
+		}
+		curIdx = lookupAt;
+	}
+
 }
 
 template<typename T>
