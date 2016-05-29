@@ -7,6 +7,8 @@
 struct TID {
 public:
 	uint64_t pageId: 32, slotId :32;
+	TID(){}
+	TID(uint64_t id): pageId(id), slotId(id){	}
 	bool operator==(const TID &tid) const {
 		return tid.pageId == pageId && tid.slotId == slotId;
 	}
