@@ -18,8 +18,8 @@ BufferManager::BufferManager(unsigned pageCount_) {
 
 BufferFrame& BufferManager::fixPage(uint64_t pageId, bool exclusive) {
 	// this page can 1. be in memory, 2. be on disk
-
 	while(true) {
+		cout << pageId;
 		table_mutex.lock();
 		
 		auto it = hashTable.find(pageId);
@@ -38,6 +38,7 @@ BufferFrame& BufferManager::fixPage(uint64_t pageId, bool exclusive) {
 			bf->exclusive = false;
 			
 		}
+		cout << hashTable[pageId]->inUse<<endl;
 		if (hashTable[pageId]->exclusive || (exclusive && hashTable[pageId]->inUse > 0)) {
 			// cannot grant this page now 
 			table_mutex.unlock();
@@ -46,7 +47,6 @@ BufferFrame& BufferManager::fixPage(uint64_t pageId, bool exclusive) {
 			// as i can grant you the page, it is not exclusive, but could be set to exclusive
 			hashTable[pageId]->exclusive = exclusive;
 			hashTable[pageId]->inUse++;
-
 			BufferFrame& bf = *hashTable[pageId];
 			table_mutex.unlock();
 			return bf;
@@ -87,13 +87,14 @@ void BufferManager::unfixPage(BufferFrame& frame, bool isDirty) {
 	table_mutex.lock();
 	// no force
 	if (isDirty) {
-		frame.isDirty = true;
+		hashTable[frame.pageId]->isDirty = true;
 	}
-	if (frame.exclusive) {
-		frame.exclusive = false;
+	if (hashTable[frame.pageId]->exclusive) {
+		hashTable[frame.pageId]->exclusive = false;
 	}
 
-	frame.inUse--; // memorize that one less has this page referenced
+	hashTable[frame.pageId]->inUse--; // memorize that one less has this page referenced
+	
 	table_mutex.unlock();
 }
 

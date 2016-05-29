@@ -21,9 +21,9 @@ using namespace std;
 
 
 
-#include "SPSegment2.cpp"
+#include "SPSegment.h"
 
-#include "Record.hpp"
+#include "BTree.cpp"
 
 int main(int argc, char** argv) {
 	// create an extensive big file
@@ -37,73 +37,33 @@ int main(int argc, char** argv) {
 		std::cerr << "warning: could not allocate file space: " << strerror(ret) << std::endl;
 	close(fd);
 
-	SPSegment2* sps = new SPSegment2();
+	//SPSegment* sps = new SPSegment();
 
-	cout << sizeof(TID);
-	cout << sizeof(SegmentHeader) << sizeof(Slot);
-
-
-	
-	char* data = (char*)malloc(2);
-	data[0] = 6;
-	data[1] = 7;
-	Record* r = new Record(2, data);
+//	cout << sizeof(TID);
+	//cout << sizeof(SegmentHeader) << sizeof(Slot);
 
 
-	//TID tid = sps->insert(*r);
-	//cout << "was inserted at p"<<tid.pageId<<"slot "<<tid.slotId<<endl;
-
-
-	//tid = sps->insert(*r);
-	//cout << "was inserted at p"<<tid.pageId<<"slot "<<tid.slotId<<endl;
-
-	//TID tid = sps->insert(*r);
-	//cout << "was inserted at p"<<tid.pageId<<"slot "<<tid.slotId<<endl;
-
-	//sps->lookup(tid);
-
-	data = (char*)malloc(5);
-	data[0] = 1;
-	data[1] = 2;
-	data[2] = 3;
-	data[3] = 4;
-	data[4] = 5;
-	Record* r_big = new Record(5, data);
-
-
-	TID tidd = sps->insert(*r_big);
-	
-TID tid = sps->insert(*r);sps->insert(*r);
-cout << "was inserted at p"<<tid.pageId<<"slot "<<tid.slotId<<endl;
-tid = sps->insert(*r);cout << "insert finished"<<endl;
-	//sps->remove(tidd);
-	sps->insert(*r_big);
-
-	sps->update(tid, *r_big);
-	sps->lookup(tid);
-	sps->remove(tid);
-	sps->lookup(tid);
-
-/*
-	
+	BTree<int> b = BTree<int>();
 	TID tid;
-	tid.pageId = 1;
-	tid.slotId = 5;
-	sps->remove(tid);*/
+	tid.pageId = 0;
+	tid.slotId = 0;
+	b.insert(4, tid);
+	b.insert(3, tid);
+	b.insert(2, TID());
+		b.insert(5, TID());
+	b.insert(1, TID());
+	b.insert(6, TID());
+	b.insert(7, TID());
+	b.insert(8, TID());
 
+		b.insert(4, TID());
+
+				b.insert(9, TID());
+b.insert(10, TID());
+
+	//b.insert(8, TID());
+	//new BTree(4);*/
 	
 
-/*
-	r = new Record();
-	r->size = 2;
-	data = (char*)malloc(2);
-	data[0] = 11;
-	r->data = data;
-
-	sps->insert(*r);
-
-	
-	sps->printAllRecords();*/
-	//sps->~SPSegment();
 
 }
