@@ -18,21 +18,15 @@ BufferManager::BufferManager(unsigned pageCount_) {
 
 BufferFrame& BufferManager::fixPage(uint64_t pageId, bool exclusive) {
 	// this page can 1. be in memory, 2. be on disk
-cout<< "fix "<<pageId <<endl;
-
 	while(true) {
-		//cout << "f"<<pageId << "is ";
 		table_mutex.lock();
 		
 		auto it = hashTable.find(pageId);
 		if (it == hashTable.end()) {	// data is not in memory
 			if (loadedPages == pageCount) {
-				cout << "freepage";
 				freePage();
-
 			}
 			loadedPages++;	// declare once more page loaded
-			cout << "loadPage";
 			BufferFrame* bf = new BufferFrame(pageId);
 			bf->exclusive = true;	// avoid modifications of others
 			hashTable[pageId] = bf;
@@ -46,8 +40,6 @@ cout<< "fix "<<pageId <<endl;
 		if (hashTable[pageId]->exclusive || (exclusive && hashTable[pageId]->inUse > 0)) {
 			// cannot grant this page now 
 			
-
-
 			table_mutex.unlock();
 			usleep(10);
 
@@ -92,7 +84,6 @@ void BufferManager::freePage() {
 	throw -3;
 }
 void BufferManager::unfixPage(BufferFrame& frame, bool isDirty) {
-	cout << "unfix" << frame.pageId<<endl;
 	table_mutex.lock();
 	// no force
 	if (isDirty) {
@@ -103,7 +94,6 @@ void BufferManager::unfixPage(BufferFrame& frame, bool isDirty) {
 	}
 
 	hashTable[frame.pageId]->inUse--; // memorize that one less has this page referenced
-	//cout << "in use now "<<hashTable[frame.pageId]->inUse << "zero "<< hashTable[0]->inUse <<endl;
 	table_mutex.unlock();
 }
 
